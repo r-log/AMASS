@@ -26,11 +26,14 @@ class TilesService {
   }
 
   /**
-   * Generate tiles for a specific floor
+   * Generate tiles for a specific floor (optionally with image_path)
    */
-  async generate(floorId) {
+  async generate(floorId, imagePath = null) {
     try {
-      const response = await this.client.post(`/tiles/generate/${floorId}`);
+      const body = imagePath
+        ? { floor_id: floorId, image_path: imagePath }
+        : { floor_id: floorId };
+      const response = await this.client.post(`/tiles/generate/${floorId}`, body);
       console.log(`✅ Tile generation started for floor ${floorId}`);
       return response;
     } catch (error) {

@@ -85,9 +85,54 @@ class ProjectsService {
       throw error;
     }
   }
+
+  /**
+   * Delete project (supervisor or admin only). Creates backup before delete.
+   */
+  async delete(projectId) {
+    try {
+      const result = await this.client.delete(`/projects/${projectId}`);
+      return result;
+    } catch (error) {
+      console.error(`❌ Failed to delete project ${projectId}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Restore project from backup ZIP file (supervisor or admin only).
+   */
+  async restoreFromBackup(file) {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const url = `${this.client.baseUrl}/projects/restore`;
+    const token = this.client.authManager?.getToken();
+    if (!token) throw new Error("Authentication required");
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Restore failed");
+    }
+    return data;
+  }
 }
+
+// Create global instance
+const projectsService = new ProjectsService(window.apiClient || apiClient);
 
 // Export
 if (typeof window !== "undefined") {
   window.ProjectsService = ProjectsService;
+  window.projectsService = projectsService;
+}
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { ProjectsService, projectsService };
 }

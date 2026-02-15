@@ -42,13 +42,6 @@ def get_floors():
         return jsonify({'error': f'Failed to get floors: {str(e)}'}), 500
 
 
-@floors_bp.route('/', methods=['GET'])
-@token_required
-def get_floors_with_slash():
-    """Get all floors (alternative endpoint with trailing slash)."""
-    return get_floors()
-
-
 @floors_bp.route('/<int:floor_id>', methods=['GET'])
 @token_required
 def get_floor(floor_id):

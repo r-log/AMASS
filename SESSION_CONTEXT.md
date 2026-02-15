@@ -75,6 +75,17 @@ python run.py
 - **Logos:** `frontend/assets/Logo.png`, `frontend/assets/Logo (light).png` (AMASS branding)
 - `assets/` and `frontend/assets/` in `.gitignore`
 
+### Map-Based Assignments (Supervisor)
+- Supervisors create assignments by clicking on the blueprint map
+- Click opens "Create Assignment" modal: work type, description, due date, worker multi-select
+- Creates work log (pin) at click location, then creates assignments for each selected worker
+- Workers must be assigned to the project first (Projects tab)
+
+### Project Restore
+- `POST /api/projects/restore` – restore project from backup ZIP (supervisor/admin only)
+- `ProjectBackupService.restore_from_backup()` – parses ZIP, recreates project, floors, work logs, sectors, assignments
+- Supervisor dashboard: "Restore from Backup" button with file picker
+
 ### Config
 - `PROJECT_BACKUPS_DIR` – project-backups/
 - `TILES_DIRECTORY` – backend/tiles
@@ -139,7 +150,6 @@ electrician-log-mvp/
 
 ## Suggested Next Steps (If Any)
 
-- Project restore from backup ZIP (not implemented)
 - Further UI/UX refinements
 - Tests for project delete + backup flow
 

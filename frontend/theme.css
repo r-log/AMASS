@@ -1,5 +1,8 @@
 /* Theme System - Black & Gold Design */
 
+/* Hide Vue template until compiled (prevents modals flashing on load with defer) */
+[v-cloak] { display: none !important; }
+
 :root {
     /* Light Theme Colors */
     --bg-primary: #ffffff;

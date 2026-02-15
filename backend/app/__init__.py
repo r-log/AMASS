@@ -57,6 +57,9 @@ def create_app(config_name: str = None) -> Flask:
 def _add_frontend_routes(app: Flask) -> None:
     """Serve frontend static files so the app works at localhost:5000."""
 
+    CACHEABLE_EXTENSIONS = ('.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2')
+    STATIC_CACHE_MAX_AGE = 3600  # 1 hour for static assets
+
     @app.route('/')
     def index():
         return send_from_directory(FRONTEND_DIR, 'login.html')
@@ -71,7 +74,10 @@ def _add_frontend_routes(app: Flask) -> None:
             abort(404)
         path = Path(FRONTEND_DIR) / filename
         if path.is_file():
-            return send_from_directory(FRONTEND_DIR, filename)
+            response = send_from_directory(FRONTEND_DIR, filename)
+            if path.suffix and path.suffix.lower() in CACHEABLE_EXTENSIONS:
+                response.headers['Cache-Control'] = f'public, max-age={STATIC_CACHE_MAX_AGE}'
+            return response
         if not path.suffix and (FRONTEND_DIR / 'index.html').exists():
             return send_from_directory(FRONTEND_DIR, 'index.html')
         from flask import abort

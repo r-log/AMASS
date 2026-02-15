@@ -179,6 +179,19 @@ const FormatUtils = {
   },
 
   /**
+   * Get hex color for assignment/status badge (pending, in-progress, completed, etc.)
+   */
+  getStatusColor(status) {
+    const colors = {
+      pending: "#f59e0b",
+      "in-progress": "#3b82f6",
+      completed: "#10b981",
+      failed: "#ef4444",
+    };
+    return colors[status] || "#6b7280";
+  },
+
+  /**
    * Format status with color
    */
   formatStatus(status) {

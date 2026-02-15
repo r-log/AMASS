@@ -2,8 +2,12 @@
 Projects API routes.
 """
 
-from flask import Blueprint, request, jsonify
+import tempfile
+from pathlib import Path
+
+from flask import Blueprint, request, jsonify, current_app
 from app.services.project_service import ProjectService
+from app.services.project_backup_service import ProjectBackupService
 from app.utils.decorators import token_required, supervisor_required, supervisor_or_admin_required
 
 projects_bp = Blueprint('projects', __name__)
@@ -114,6 +118,51 @@ def get_project_workers(project_id):
         return jsonify(workers), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@projects_bp.route('/restore', methods=['POST'])
+@token_required
+@supervisor_or_admin_required
+def restore_project():
+    """Restore a project from a backup ZIP file (supervisor or admin only)."""
+    try:
+        user_id = request.current_user.get('user_id')
+        if not user_id:
+            return jsonify({'error': 'User not found'}), 401
+
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided. Use form field "file"'}), 400
+
+        file = request.files['file']
+        if not file or file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+
+        if not file.filename.lower().endswith('.zip'):
+            return jsonify({'error': 'File must be a .zip backup'}), 400
+
+        floor_plans_dir = current_app.config.get('FLOOR_PLANS_DIR', 'floor-plans')
+
+        with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as tmp:
+            file.save(tmp.name)
+            tmp_path = Path(tmp.name)
+
+        try:
+            success, project, message = ProjectBackupService.restore_from_backup(
+                tmp_path, floor_plans_dir, user_id
+            )
+            if success:
+                return jsonify({
+                    'message': message,
+                    'project': project.to_dict(),
+                }), 201
+            return jsonify({'error': message}), 400
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Failed to restore project: {str(e)}'}), 500
 
 
 @projects_bp.route('/<int:project_id>', methods=['DELETE'])

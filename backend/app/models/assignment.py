@@ -21,6 +21,16 @@ class Assignment:
     notes: str = ""
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    # Enriched fields from work_log/floors join (for map navigation)
+    floor_id: Optional[int] = None
+    project_id: Optional[int] = None
+    x_coord: Optional[float] = None
+    y_coord: Optional[float] = None
+    floor_name: Optional[str] = None
+    work_type: Optional[str] = None
+    work_description: Optional[str] = None
+    assigned_to_name: Optional[str] = None
+    assigned_by_name: Optional[str] = None
 
     @classmethod
     def create_table(cls) -> str:
@@ -48,7 +58,8 @@ class Assignment:
         assignment_data = execute_query(
             """SELECT wa.*, 
                       wl.work_type, wl.description as work_description, wl.floor_id,
-                      f.name as floor_name,
+                      wl.x_coord, wl.y_coord,
+                      f.name as floor_name, f.project_id,
                       u1.full_name as assigned_to_name,
                       u2.full_name as assigned_by_name
                FROM work_assignments wa
@@ -71,7 +82,8 @@ class Assignment:
         query = """
             SELECT wa.*, 
                    wl.work_type, wl.description as work_description, wl.floor_id,
-                   f.name as floor_name,
+                   wl.x_coord, wl.y_coord,
+                   f.name as floor_name, f.project_id,
                    u1.full_name as assigned_to_name,
                    u2.full_name as assigned_by_name
             FROM work_assignments wa
@@ -98,7 +110,8 @@ class Assignment:
         assignments_data = execute_query(
             """SELECT wa.*, 
                       wl.work_type, wl.description as work_description, wl.floor_id,
-                      f.name as floor_name,
+                      wl.x_coord, wl.y_coord,
+                      f.name as floor_name, f.project_id,
                       u1.full_name as assigned_to_name,
                       u2.full_name as assigned_by_name
                FROM work_assignments wa
@@ -119,7 +132,8 @@ class Assignment:
         assignments_data = execute_query(
             """SELECT wa.*, 
                       wl.work_type, wl.description as work_description, wl.floor_id,
-                      f.name as floor_name,
+                      wl.x_coord, wl.y_coord,
+                      f.name as floor_name, f.project_id,
                       u1.full_name as assigned_to_name,
                       u2.full_name as assigned_by_name
                FROM work_assignments wa
@@ -140,7 +154,8 @@ class Assignment:
         query = """
             SELECT wa.*,
                    wl.work_type, wl.description as work_description, wl.floor_id,
-                   f.name as floor_name,
+                   wl.x_coord, wl.y_coord,
+                   f.name as floor_name, f.project_id,
                    u1.full_name as assigned_to_name,
                    u2.full_name as assigned_by_name
             FROM work_assignments wa
@@ -164,7 +179,8 @@ class Assignment:
         query = """
             SELECT wa.*, 
                    wl.work_type, wl.description as work_description, wl.floor_id,
-                   f.name as floor_name,
+                   wl.x_coord, wl.y_coord,
+                   f.name as floor_name, f.project_id,
                    u1.full_name as assigned_to_name,
                    u2.full_name as assigned_by_name
             FROM work_assignments wa
@@ -189,7 +205,8 @@ class Assignment:
         assignments_data = execute_query(
             """SELECT wa.*, 
                       wl.work_type, wl.description as work_description, wl.floor_id,
-                      f.name as floor_name,
+                      wl.x_coord, wl.y_coord,
+                      f.name as floor_name, f.project_id,
                       u1.full_name as assigned_to_name,
                       u2.full_name as assigned_by_name
                FROM work_assignments wa
@@ -208,7 +225,8 @@ class Assignment:
         assignments_data = execute_query(
             f"""SELECT wa.*, 
                        wl.work_type, wl.description as work_description, wl.floor_id,
-                       f.name as floor_name,
+                       wl.x_coord, wl.y_coord,
+                       f.name as floor_name, f.project_id,
                        u1.full_name as assigned_to_name,
                        u2.full_name as assigned_by_name
                 FROM work_assignments wa
@@ -318,7 +336,7 @@ class Assignment:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert assignment to dictionary representation."""
-        return {
+        result = {
             'id': self.id,
             'work_log_id': self.work_log_id,
             'assigned_to': self.assigned_to,
@@ -331,6 +349,27 @@ class Assignment:
             'is_overdue': self.is_overdue(),
             'is_due_soon': self.is_due_soon()
         }
+        # Enriched fields for map navigation and display
+        if self.floor_id is not None:
+            result['floor_id'] = self.floor_id
+        if self.project_id is not None:
+            result['project_id'] = self.project_id
+        if self.x_coord is not None:
+            result['x_coord'] = self.x_coord
+        if self.y_coord is not None:
+            result['y_coord'] = self.y_coord
+        if self.floor_name is not None:
+            result['floor_name'] = self.floor_name
+        if self.work_type is not None:
+            result['work_type'] = self.work_type
+        if self.work_description is not None:
+            result['work_description'] = self.work_description
+            result['description'] = self.work_description  # Alias for frontend
+        if self.assigned_to_name is not None:
+            result['assigned_to_name'] = self.assigned_to_name
+        if self.assigned_by_name is not None:
+            result['assigned_by_name'] = self.assigned_by_name
+        return result
 
     @classmethod
     def _from_db_row(cls, row) -> 'Assignment':
@@ -346,7 +385,16 @@ class Assignment:
             created_at=datetime.fromisoformat(
                 row['created_at']) if row['created_at'] else None,
             updated_at=datetime.fromisoformat(
-                row['updated_at']) if row.get('updated_at') else None
+                row['updated_at']) if row.get('updated_at') else None,
+            floor_id=row.get('floor_id'),
+            project_id=row.get('project_id'),
+            x_coord=row.get('x_coord'),
+            y_coord=row.get('y_coord'),
+            floor_name=row.get('floor_name'),
+            work_type=row.get('work_type'),
+            work_description=row.get('work_description'),
+            assigned_to_name=row.get('assigned_to_name'),
+            assigned_by_name=row.get('assigned_by_name')
         )
 
     def __str__(self) -> str:

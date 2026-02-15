@@ -94,13 +94,18 @@ class CriticalSectorService:
 
             # Update fields
             updateable_fields = [
-                'sector_name', 'x_coord', 'y_coord', 'radius', 'width', 'height',
+                'sector_name', 'floor_id', 'x_coord', 'y_coord', 'radius', 'width', 'height',
                 'sector_type', 'priority'
             ]
 
             for field in updateable_fields:
                 if field in data:
-                    if field in ['x_coord', 'y_coord', 'radius', 'width', 'height']:
+                    if field == 'floor_id':
+                        try:
+                            sector.floor_id = int(data[field])
+                        except (ValueError, TypeError):
+                            return False, None, "Invalid floor_id"
+                    elif field in ['x_coord', 'y_coord', 'radius', 'width', 'height']:
                         # Handle numeric fields with validation
                         try:
                             value = float(data[field])

@@ -6,34 +6,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Supervisor Dashboard - Electrician Work Log</title>
 
-    <!-- Vue 3 from CDN -->
+    <!-- Vue 3 from CDN (no defer - must load before inline app script) -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 
     <!-- Tailwind CSS from CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com" defer></script>
 
     <!-- Theme System -->
     <link rel="stylesheet" href="theme.css">
-    <script src="theme.js"></script>
+    <script src="theme.js" defer></script>
 
     <!-- New Modular Architecture -->
     <!-- Configuration -->
-    <script src="config/app.config.js"></script>
+    <script src="config/app.config.js" defer></script>
 
     <!-- Core API Services -->
-    <script src="core/api/api.client.js"></script>
-    <script src="core/api/auth.service.js"></script>
-    <script src="core/api/floors.service.js"></script>
-    <script src="core/api/workLogs.service.js"></script>
-    <script src="core/api/criticalSectors.service.js"></script>
-    <script src="core/api/projects.service.js"></script>
+    <script src="core/api/api.client.js" defer></script>
+    <script src="core/api/auth.service.js" defer></script>
+    <script src="core/api/floors.service.js" defer></script>
+    <script src="core/api/workLogs.service.js" defer></script>
+    <script src="core/api/criticalSectors.service.js" defer></script>
+    <script src="core/api/projects.service.js" defer></script>
+    <script src="core/api/assignments.service.js" defer></script>
+    <script src="core/api/notifications.service.js" defer></script>
+    <script src="core/api/dashboard.service.js" defer></script>
 
     <!-- Utilities -->
-    <script src="core/utils/date.utils.js"></script>
-    <script src="core/utils/format.utils.js"></script>
+    <script src="core/utils/date.utils.js" defer></script>
+    <script src="core/utils/format.utils.js" defer></script>
 
     <!-- Authentication Manager (uses services) -->
-    <script src="auth.js"></script>
+    <script src="auth.js" defer></script>
 
     <style>
         body {
@@ -515,7 +518,7 @@
 </head>
 
 <body>
-    <div id="app">
+    <div id="app" v-cloak>
         <!-- Top Bar -->
         <div class="top-bar">
             <!-- Hamburger Menu -->
@@ -634,6 +637,10 @@
                             <button @click="showCreateProject = true; newProject = { name: '', description: '' }"
                                 class="btn-primary">
                                 ➕ Create Project
+                            </button>
+                            <button @click="showRestoreProject = true; restoreFile = null"
+                                class="btn-secondary" style="margin-left: 8px;">
+                                📥 Restore from Backup
                             </button>
                         </div>
 
@@ -792,12 +799,11 @@
                 <!-- Assignments Tab -->
                 <div v-if="activeTab === 'assignments'">
                     <div class="dashboard-card">
-                        <div
-                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <div style="margin-bottom: 20px;">
                             <h2 style="font-size: 20px; font-weight: 700; color: #ffd700;">Assignment Management</h2>
-                            <button @click="showCreateAssignment = true" class="btn-primary">
-                                ➕ Create Assignment
-                            </button>
+                            <p style="color: #9ca3af; font-size: 14px; margin-top: 8px;">
+                                Assign work from the map: place a pin on the blueprint, then choose workers and add a description.
+                            </p>
                         </div>
 
                         <div v-if="allAssignments.length === 0"
@@ -885,6 +891,28 @@
                 </div>
             </div>
 
+            <!-- Restore Project Modal -->
+            <div v-if="showRestoreProject" class="modal-overlay" @click.self="showRestoreProject = false">
+                <div class="modal-content">
+                    <h2 style="font-size: 24px; font-weight: 700; color: #ffd700; margin-bottom: 24px;">
+                        Restore Project from Backup
+                    </h2>
+                    <p style="color: #9ca3af; margin-bottom: 16px;">
+                        Select a project backup ZIP file (created when a project was deleted).
+                    </p>
+                    <form @submit.prevent="submitRestoreProject">
+                        <input type="file" accept=".zip" @change="onRestoreFileSelect"
+                            style="margin-bottom: 16px; color: #f3f4f6;">
+                        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
+                            <button type="button" @click="showRestoreProject = false" class="btn-secondary">Cancel</button>
+                            <button type="submit" class="btn-primary" :disabled="restoreSubmitting || !restoreFile">
+                                {{ restoreSubmitting ? 'Restoring...' : 'Restore' }}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
             <!-- Create Project Modal -->
             <div v-if="showCreateProject" class="modal-overlay" @click.self="showCreateProject = false">
                 <div class="modal-content">
@@ -967,6 +995,67 @@
                 </div>
             </div>
 
+            <!-- Edit Critical Sector Modal -->
+            <div v-if="showEditSector && editingSector" class="modal-overlay" @click.self="showEditSector = false">
+                <div class="modal-content">
+                    <h2 style="font-size: 24px; font-weight: 700; color: #ffd700; margin-bottom: 24px;">
+                        Edit Critical Sector
+                    </h2>
+
+                    <form @submit.prevent="submitUpdateSector">
+                        <div class="form-group">
+                            <label class="form-label">Sector Name</label>
+                            <input type="text" v-model="editingSector.sector_name" class="form-input" required
+                                placeholder="e.g., High Voltage Area">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Floor</label>
+                            <select v-model="editingSector.floor_id" class="form-select" required>
+                                <option value="">Select floor</option>
+                                <option v-for="floor in floors" :key="floor.id" :value="floor.id">
+                                    {{ floor.name }}
+                                </option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Priority Level</label>
+                            <select v-model="editingSector.priority" class="form-select" required>
+                                <option value="high">🔴 High Priority</option>
+                                <option value="medium">🟡 Medium Priority</option>
+                                <option value="standard">🟢 Standard</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Center X Coordinate</label>
+                            <input type="number" v-model.number="editingSector.x_coord" step="0.01" min="0" max="1"
+                                class="form-input" required placeholder="0.5">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Center Y Coordinate</label>
+                            <input type="number" v-model.number="editingSector.y_coord" step="0.01" min="0" max="1"
+                                class="form-input" required placeholder="0.5">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Radius</label>
+                            <input type="number" v-model.number="editingSector.radius" step="0.01" min="0.01" max="1"
+                                class="form-input" required placeholder="0.1">
+                        </div>
+
+                        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
+                            <button type="button" @click="showEditSector = false" class="btn-secondary">Cancel</button>
+                            <button type="submit" class="btn-primary" :disabled="editSectorSubmitting">
+                                {{ editSectorSubmitting ? 'Saving...' : 'Save' }}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
             <!-- Create Critical Sector Modal -->
             <div v-if="showCreateSector" class="modal-overlay" @click.self="showCreateSector = false">
                 <div class="modal-content">
@@ -1026,61 +1115,14 @@
                     </form>
                 </div>
             </div>
-
-            <!-- Create Assignment Modal -->
-            <div v-if="showCreateAssignment" class="modal-overlay" @click.self="showCreateAssignment = false">
-                <div class="modal-content">
-                    <h2 style="font-size: 24px; font-weight: 700; color: #ffd700; margin-bottom: 24px;">
-                        Create Assignment
-                    </h2>
-
-                    <form @submit.prevent="submitCreateAssignment">
-                        <div class="form-group">
-                            <label class="form-label">Worker</label>
-                            <select v-model="newAssignment.worker_id" class="form-select" required>
-                                <option value="">Select worker</option>
-                                <option v-for="worker in workers" :key="worker.id" :value="worker.id">
-                                    {{ worker.full_name }}
-                                </option>
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">Floor</label>
-                            <select v-model="newAssignment.floor_id" class="form-select" required>
-                                <option value="">Select floor</option>
-                                <option v-for="floor in floors" :key="floor.id" :value="floor.id">
-                                    {{ floor.name }}
-                                </option>
-                            </select>
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">Description</label>
-                            <textarea v-model="newAssignment.description" rows="3" class="form-textarea"
-                                placeholder="Describe the assignment..." required></textarea>
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">Due Date</label>
-                            <input type="date" v-model="newAssignment.due_date" class="form-input" required>
-                        </div>
-
-                        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
-                            <button type="button" @click="showCreateAssignment = false"
-                                class="btn-secondary">Cancel</button>
-                            <button type="submit" class="btn-primary">Create Assignment</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
         </div>
     </div>
 
     <script>
-        const { createApp } = Vue;
+        document.addEventListener('DOMContentLoaded', () => {
+            const { createApp } = Vue;
 
-        createApp({
+            createApp({
             data() {
                 return {
                     currentUser: null,
@@ -1101,6 +1143,9 @@
                     projectWorkers: {},
                     showCreateProject: false,
                     newProject: { name: '', description: '' },
+                    showRestoreProject: false,
+                    restoreFile: null,
+                    restoreSubmitting: false,
                     showDeleteProject: false,
                     projectToDelete: null,
                     deleteProjectSubmitting: false,
@@ -1113,7 +1158,9 @@
                     newFloor: { file: null, fileName: '' },
                     createFloorSubmitting: false,
                     showCreateSector: false,
-                    showCreateAssignment: false,
+                    showEditSector: false,
+                    editingSector: null,
+                    editSectorSubmitting: false,
                     newSector: {
                         sector_name: '',
                         floor_id: '',
@@ -1121,12 +1168,6 @@
                         x_coord: 0.5,
                         y_coord: 0.5,
                         radius: 0.1
-                    },
-                    newAssignment: {
-                        worker_id: '',
-                        floor_id: '',
-                        description: '',
-                        due_date: ''
                     }
                 };
             },
@@ -1189,9 +1230,7 @@
                 },
                 async loadStats() {
                     try {
-                        const response = await fetchWithAuth(`${API_BASE}/dashboard/supervisor`);
-                        const data = await response.json();
-
+                        const data = await window.dashboardService.getSupervisorStats();
                         this.stats.activeWorkers = data.active_workers_today || 0;
                         this.stats.pendingAssignments = data.pending_assignments || 0;
                         this.stats.criticalSectors = data.critical_sectors || 0;
@@ -1202,19 +1241,16 @@
                 },
                 async loadWorkers() {
                     try {
-                        const response = await fetchWithAuth(`${API_BASE}/auth/users?role=worker`);
-                        const allWorkers = await response.json();
+                        const allWorkers = await window.authService.getUsersByRole('worker');
 
-                        // Get work logs for today to show activity
-                        const logsResponse = await fetchWithAuth(`${API_BASE}/work-logs`);
-                        const logs = await logsResponse.json();
                         const today = new Date().toISOString().split('T')[0];
+                        const logs = await window.workLogsService.getAll({
+                            start_date: today,
+                            end_date: today
+                        });
 
                         this.workers = allWorkers.map(worker => {
-                            const todayLogs = logs.filter(log =>
-                                log.worker_id === worker.id &&
-                                log.work_date.startsWith(today)
-                            );
+                            const todayLogs = logs.filter(log => log.worker_id === worker.id);
 
                             return {
                                 ...worker,
@@ -1231,40 +1267,35 @@
                 },
                 async loadCriticalSectors() {
                     try {
-                        const response = await fetchWithAuth(`${API_BASE}/critical-sectors`);
-                        this.criticalSectors = await response.json();
+                        this.criticalSectors = await window.criticalSectorsService.getAll();
                     } catch (error) {
                         console.error('Error loading critical sectors:', error);
                     }
                 },
                 async loadAssignments() {
                     try {
-                        const response = await fetchWithAuth(`${API_BASE}/assignments`);
-                        this.allAssignments = await response.json();
+                        this.allAssignments = await window.assignmentsService.getAll();
                     } catch (error) {
                         console.error('Error loading assignments:', error);
                     }
                 },
                 async loadNotifications() {
                     try {
-                        const response = await fetchWithAuth('http://localhost:5000/api/notifications');
-                        this.notifications = await response.json();
+                        this.notifications = await window.notificationsService.getAll();
                     } catch (error) {
                         console.error('Error loading notifications:', error);
                     }
                 },
                 async loadFloors() {
                     try {
-                        const response = await fetchWithAuth(`${API_BASE}/floors`);
-                        this.floors = await response.json();
+                        this.floors = await window.floorsService.getAll();
                     } catch (error) {
                         console.error('Error loading floors:', error);
                     }
                 },
                 async loadProjects() {
                     try {
-                        const response = await fetchWithAuth(`${API_BASE}/projects`);
-                        this.projects = response.ok ? await response.json() : [];
+                        this.projects = await window.projectsService.getAll() || [];
                     } catch (error) {
                         console.error('Error loading projects:', error);
                     }
@@ -1273,8 +1304,7 @@
                     this.projectWorkers = {};
                     for (const p of this.projects) {
                         try {
-                            const response = await fetchWithAuth(`${API_BASE}/projects/${p.id}/workers`);
-                            this.projectWorkers[p.id] = response.ok ? await response.json() : [];
+                            this.projectWorkers[p.id] = await window.projectsService.getWorkers(p.id) || [];
                         } catch (e) {
                             this.projectWorkers[p.id] = [];
                         }
@@ -1284,8 +1314,7 @@
                     this.projectFloors = {};
                     for (const p of this.projects) {
                         try {
-                            const response = await fetchWithAuth(`${API_BASE}/floors?project_id=${p.id}`);
-                            this.projectFloors[p.id] = response.ok ? await response.json() : [];
+                            this.projectFloors[p.id] = await window.floorsService.getAll({ project_id: p.id }) || [];
                         } catch (e) {
                             this.projectFloors[p.id] = [];
                         }
@@ -1293,22 +1322,32 @@
                 },
                 async submitCreateProject() {
                     try {
-                        const response = await fetchWithAuth(`${API_BASE}/projects`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(this.newProject)
-                        });
-                        if (response.ok) {
-                            this.showCreateProject = false;
-                            this.newProject = { name: '', description: '' };
-                            await this.loadData();
-                        } else {
-                            const err = await response.json();
-                            alert(err.error || 'Failed to create project');
-                        }
+                        await window.projectsService.create(this.newProject);
+                        this.showCreateProject = false;
+                        this.newProject = { name: '', description: '' };
+                        await this.loadData();
                     } catch (error) {
                         console.error('Error creating project:', error);
-                        alert('Failed to create project');
+                        alert(error.message || error.error || 'Failed to create project');
+                    }
+                },
+                onRestoreFileSelect(event) {
+                    this.restoreFile = event.target.files?.[0] || null;
+                },
+                async submitRestoreProject() {
+                    if (!this.restoreFile) return;
+                    this.restoreSubmitting = true;
+                    try {
+                        const result = await window.projectsService.restoreFromBackup(this.restoreFile);
+                        alert(result.message || 'Project restored successfully!');
+                        this.showRestoreProject = false;
+                        this.restoreFile = null;
+                        await this.loadData();
+                    } catch (error) {
+                        console.error('Error restoring project:', error);
+                        alert(error.message || 'Failed to restore project');
+                    } finally {
+                        this.restoreSubmitting = false;
                     }
                 },
                 openAssignModal(project) {
@@ -1324,24 +1363,16 @@
                     if (!this.projectToDelete) return;
                     this.deleteProjectSubmitting = true;
                     try {
-                        const response = await fetchWithAuth(
-                            `${API_BASE}/projects/${this.projectToDelete.id}`,
-                            { method: 'DELETE' }
-                        );
-                        const data = await response.json();
-                        if (response.ok) {
-                            this.projects = this.projects.filter((p) => p.id !== this.projectToDelete.id);
-                            delete this.projectWorkers[this.projectToDelete.id];
-                            delete this.projectFloors[this.projectToDelete.id];
-                            this.showDeleteProject = false;
-                            this.projectToDelete = null;
-                            alert(`Project deleted. Backup saved: ${data.backup_path || 'see server'}`);
-                        } else {
-                            alert(data.error || 'Failed to delete project');
-                        }
+                        const data = await window.projectsService.delete(this.projectToDelete.id);
+                        this.projects = this.projects.filter((p) => p.id !== this.projectToDelete.id);
+                        delete this.projectWorkers[this.projectToDelete.id];
+                        delete this.projectFloors[this.projectToDelete.id];
+                        this.showDeleteProject = false;
+                        this.projectToDelete = null;
+                        alert(`Project deleted. Backup saved: ${data?.backup_path || 'see server'}`);
                     } catch (error) {
                         console.error('Error deleting project:', error);
-                        alert('Failed to delete project');
+                        alert(error.message || error.data?.error || 'Failed to delete project');
                     } finally {
                         this.deleteProjectSubmitting = false;
                     }
@@ -1364,19 +1395,11 @@
                     if (!this.selectedProjectForFloor) return;
                     this.createFloorSubmitting = true;
                     try {
-                        const formData = new FormData();
-                        formData.append('project_id', this.selectedProjectForFloor.id);
-                        if (this.newFloor.file) formData.append('file', this.newFloor.file);
-                        const response = await fetch(`${API_BASE}/floors`, {
-                            method: 'POST',
-                            headers: { Authorization: `Bearer ${authManager.getToken()}` },
-                            body: formData
-                        });
-                        if (!response.ok) {
-                            const err = await response.json();
-                            throw new Error(err.error || 'Failed to create floor');
-                        }
-                        const result = await response.json();
+                        const result = await window.floorsService.createWithUpload(
+                            this.selectedProjectForFloor.id,
+                            '',
+                            this.newFloor.file || undefined
+                        );
                         alert(result.tiles_generating
                             ? 'Floor created! Tiles are generating in the background. The map will be ready shortly.'
                             : 'Floor created. Add a floor plan later to generate map tiles.');
@@ -1394,66 +1417,45 @@
                 async submitAssignWorker() {
                     if (!this.selectedProjectForAssign || !this.workerToAssign) return;
                     try {
-                        const response = await fetchWithAuth(
-                            `${API_BASE}/projects/${this.selectedProjectForAssign.id}/assign`,
-                            { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: parseInt(this.workerToAssign, 10) }) }
+                        await window.projectsService.assignWorker(
+                            this.selectedProjectForAssign.id,
+                            parseInt(this.workerToAssign, 10)
                         );
-                        if (response.ok) {
-                            this.showAssignWorker = false;
-                            this.selectedProjectForAssign = null;
-                            await this.loadAllProjectWorkers();
-                        } else {
-                            const err = await response.json();
-                            alert(err.error || 'Failed to assign worker');
-                        }
+                        this.showAssignWorker = false;
+                        this.selectedProjectForAssign = null;
+                        await this.loadAllProjectWorkers();
                     } catch (error) {
                         console.error('Error assigning worker:', error);
-                        alert('Failed to assign worker');
+                        alert(error.message || 'Failed to assign worker');
                     }
                 },
                 async unassignWorker(projectId, userId) {
                     if (!confirm('Unassign this worker from the project?')) return;
                     try {
-                        const response = await fetchWithAuth(
-                            `${API_BASE}/projects/${projectId}/assign/${userId}`,
-                            { method: 'DELETE' }
-                        );
-                        if (response.ok) {
-                            await this.loadAllProjectWorkers();
-                        } else {
-                            alert('Failed to unassign worker');
-                        }
+                        await window.projectsService.unassignWorker(projectId, userId);
+                        await this.loadAllProjectWorkers();
                     } catch (error) {
                         console.error('Error unassigning worker:', error);
-                        alert('Failed to unassign worker');
+                        alert(error.message || 'Failed to unassign worker');
                     }
                 },
                 async submitCreateSector() {
                     try {
-                        const response = await fetchWithAuth(`${API_BASE}/critical-sectors`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(this.newSector)
-                        });
-
-                        if (response.ok) {
-                            alert('Critical sector created successfully!');
-                            this.showCreateSector = false;
-                            this.newSector = {
-                                sector_name: '',
-                                floor_id: '',
-                                priority: 'standard',
-                                x_coord: 0.5,
-                                y_coord: 0.5,
-                                radius: 0.1
-                            };
-                            await this.loadData();
-                        } else {
-                            alert('Error creating critical sector');
-                        }
+                        await window.criticalSectorsService.create(this.newSector);
+                        alert('Critical sector created successfully!');
+                        this.showCreateSector = false;
+                        this.newSector = {
+                            sector_name: '',
+                            floor_id: '',
+                            priority: 'standard',
+                            x_coord: 0.5,
+                            y_coord: 0.5,
+                            radius: 0.1
+                        };
+                        await this.loadData();
                     } catch (error) {
                         console.error('Error creating sector:', error);
-                        alert('Error creating critical sector');
+                        alert(error.message || 'Error creating critical sector');
                     }
                 },
                 async deleteSector(sectorId) {
@@ -1462,52 +1464,17 @@
                     }
 
                     try {
-                        const response = await fetchWithAuth(`${API_BASE}/critical-sectors/${sectorId}`, {
-                            method: 'DELETE'
-                        });
-
-                        if (response.ok) {
-                            alert('Critical sector deleted successfully!');
-                            await this.loadData();
-                        } else {
-                            alert('Error deleting critical sector');
-                        }
+                        await window.criticalSectorsService.delete(sectorId);
+                        alert('Critical sector deleted successfully!');
+                        await this.loadData();
                     } catch (error) {
                         console.error('Error deleting sector:', error);
-                        alert('Error deleting critical sector');
-                    }
-                },
-                async submitCreateAssignment() {
-                    try {
-                        const response = await fetchWithAuth(`${API_BASE}/assignments`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(this.newAssignment)
-                        });
-
-                        if (response.ok) {
-                            alert('Assignment created successfully!');
-                            this.showCreateAssignment = false;
-                            this.newAssignment = {
-                                worker_id: '',
-                                floor_id: '',
-                                description: '',
-                                due_date: ''
-                            };
-                            await this.loadData();
-                        } else {
-                            alert('Error creating assignment');
-                        }
-                    } catch (error) {
-                        console.error('Error creating assignment:', error);
-                        alert('Error creating assignment');
+                        alert(error.message || 'Error deleting critical sector');
                     }
                 },
                 async markAsRead(notifId) {
                     try {
-                        await fetchWithAuth(`${API_BASE}/notifications/${notifId}/read`, {
-                            method: 'PUT'
-                        });
+                        await window.notificationsService.markAsRead(notifId);
                         await this.loadNotifications();
                         await this.loadStats();
                     } catch (error) {
@@ -1516,9 +1483,7 @@
                 },
                 async markAllAsRead() {
                     try {
-                        await fetchWithAuth(`${API_BASE}/notifications/read-all`, {
-                            method: 'PUT'
-                        });
+                        await window.notificationsService.markAllAsRead();
                         await this.loadNotifications();
                         await this.loadStats();
                     } catch (error) {
@@ -1526,30 +1491,39 @@
                     }
                 },
                 editSector(sector) {
-                    console.log('Edit sector:', sector);
-                    // TODO: Implement edit modal
+                    this.editingSector = { ...sector };
+                    this.showEditSector = true;
+                },
+                async submitUpdateSector() {
+                    if (!this.editingSector?.id) return;
+                    this.editSectorSubmitting = true;
+                    try {
+                        const data = {
+                            sector_name: this.editingSector.sector_name,
+                            floor_id: this.editingSector.floor_id,
+                            priority: this.editingSector.priority,
+                            x_coord: parseFloat(this.editingSector.x_coord) || 0.5,
+                            y_coord: parseFloat(this.editingSector.y_coord) || 0.5,
+                            radius: parseFloat(this.editingSector.radius) || 0.1,
+                        };
+                        await window.criticalSectorsService.update(this.editingSector.id, data);
+                        alert('Critical sector updated successfully!');
+                        this.showEditSector = false;
+                        this.editingSector = null;
+                        await this.loadData();
+                    } catch (error) {
+                        console.error('Error updating sector:', error);
+                        alert(error.message || 'Error updating critical sector');
+                    } finally {
+                        this.editSectorSubmitting = false;
+                    }
                 },
                 goToMap() {
                     window.location.href = 'index.html';
                 },
-                getStatusColor(status) {
-                    const colors = {
-                        'pending': '#f59e0b',
-                        'in-progress': '#3b82f6',
-                        'completed': '#10b981'
-                    };
-                    return colors[status] || '#6b7280';
-                },
-                formatDate(dateStr) {
-                    if (!dateStr) return 'Not set';
-                    const date = new Date(dateStr);
-                    return date.toLocaleDateString();
-                },
-                formatDateTime(dateStr) {
-                    if (!dateStr) return '';
-                    const date = new Date(dateStr);
-                    return date.toLocaleString();
-                },
+                getStatusColor(status) { return window.FormatUtils?.getStatusColor(status) ?? '#6b7280'; },
+                formatDate(dateStr) { return window.DateUtils?.formatDate(dateStr) ?? 'Not set'; },
+                formatDateTime(dateStr) { return window.DateUtils?.formatDateTime(dateStr) ?? ''; },
                 toggleSidebar() {
                     this.sidebarOpen = !this.sidebarOpen;
                 },
@@ -1561,6 +1535,7 @@
                 }
             }
         }).mount('#app');
+        });
     </script>
 </body>
 

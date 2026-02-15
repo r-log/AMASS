@@ -6,33 +6,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Worker Dashboard - Electrician Work Log</title>
 
-    <!-- Vue 3 from CDN -->
+    <!-- Vue 3 from CDN (no defer - must load before inline app script) -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 
     <!-- Tailwind CSS from CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com" defer></script>
 
     <!-- Theme System -->
     <link rel="stylesheet" href="theme.css">
-    <script src="theme.js"></script>
+    <script src="theme.js" defer></script>
 
     <!-- New Modular Architecture -->
     <!-- Configuration -->
-    <script src="config/app.config.js"></script>
+    <script src="config/app.config.js" defer></script>
 
     <!-- Core API Services -->
-    <script src="core/api/api.client.js"></script>
-    <script src="core/api/auth.service.js"></script>
-    <script src="core/api/floors.service.js"></script>
-    <script src="core/api/workLogs.service.js"></script>
-    <script src="core/api/projects.service.js"></script>
+    <script src="core/api/api.client.js" defer></script>
+    <script src="core/api/auth.service.js" defer></script>
+    <script src="core/api/floors.service.js" defer></script>
+    <script src="core/api/workLogs.service.js" defer></script>
+    <script src="core/api/projects.service.js" defer></script>
+    <script src="core/api/assignments.service.js" defer></script>
+    <script src="core/api/notifications.service.js" defer></script>
+    <script src="core/api/dashboard.service.js" defer></script>
 
     <!-- Utilities -->
-    <script src="core/utils/date.utils.js"></script>
-    <script src="core/utils/format.utils.js"></script>
+    <script src="core/utils/date.utils.js" defer></script>
+    <script src="core/utils/format.utils.js" defer></script>
 
     <!-- Authentication Manager (uses services) -->
-    <script src="auth.js"></script>
+    <script src="auth.js" defer></script>
 
     <style>
         body {
@@ -152,8 +155,9 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            z-index: 1000;
+            z-index: 2000;
             padding: 20px;
+            cursor: pointer;
         }
 
         .modal-content {
@@ -165,6 +169,7 @@
             max-height: 90vh;
             overflow-y: auto;
             padding: 24px;
+            cursor: default;
         }
 
         .form-group {
@@ -463,7 +468,7 @@
 </head>
 
 <body>
-    <div id="app">
+    <div id="app" v-cloak>
         <!-- Top Bar -->
         <div class="top-bar">
             <!-- Hamburger Menu -->
@@ -500,11 +505,11 @@
 
             <!-- Navigation -->
             <div class="sidebar-nav">
-                <button class="nav-item active">
+                <button type="button" class="nav-item active" @click="closeSidebar">
                     <span class="nav-item-icon">📊</span>
                     DASHBOARD
                 </button>
-                <button class="nav-item" @click="goToMap">
+                <button type="button" class="nav-item" @click="goToMap">
                     <span class="nav-item-icon">📍</span>
                     MAP
                 </button>
@@ -576,10 +581,15 @@
                                             {{ assignment.status.toUpperCase() }}
                                         </span>
                                     </div>
-                                    <div style="display: flex; gap: 16px; font-size: 13px; color: #9ca3af;">
+                                    <div style="display: flex; gap: 16px; font-size: 13px; color: #9ca3af; align-items: center; flex-wrap: wrap;">
                                         <span>📅 Due: {{ formatDate(assignment.due_date) }}</span>
                                         <span v-if="assignment.assigned_by_name">👤 Assigned by: {{
                                             assignment.assigned_by_name }}</span>
+                                        <button v-if="assignment.floor_id && assignment.project_id != null && assignment.x_coord != null && assignment.y_coord != null"
+                                            @click.stop="goToMap(assignment)"
+                                            style="margin-left: auto; background: rgba(255, 215, 0, 0.2); border: 1px solid #ffd700; color: #ffd700; padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; font-weight: 600;">
+                                            🗺️ Go to Map
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -632,19 +642,22 @@
                                 </button>
                             </div>
 
-                            <div v-if="notifications.length === 0"
+                            <div v-if="notificationsLoading"
+                                style="text-align: center; padding: 20px; color: #9ca3af;">
+                                <p>Loading notifications...</p>
+                            </div>
+                            <div v-else-if="notifications.length === 0"
                                 style="text-align: center; padding: 20px; color: #9ca3af;">
                                 <p>No notifications</p>
                             </div>
 
                             <div v-else style="max-height: 400px; overflow-y: auto;">
                                 <div v-for="notif in notifications" :key="notif.id"
-                                    :class="['notification-item', notif.type, { 'unread': !notif.is_read }]"
+                                    :class="['notification-item', notif.type || 'info', { 'unread': !notif.is_read }]"
                                     @click="markAsRead(notif.id)">
-                                    <div style="font-weight: 600; color: #ffffff; margin-bottom: 4px;">{{ notif.title }}
+                                    <div style="font-weight: 600; color: #ffffff; margin-bottom: 4px;">{{ notif.title || 'Notification' }}
                                     </div>
-                                    <div style="color: #9ca3af; font-size: 13px; margin-bottom: 4px;">{{ notif.message
-                                        }}
+                                    <div v-if="notif.message" style="color: #9ca3af; font-size: 13px; margin-bottom: 4px;">{{ notif.message }}
                                     </div>
                                     <div style="color: #6b7280; font-size: 12px;">{{ formatDateTime(notif.created_at) }}
                                     </div>
@@ -661,7 +674,7 @@
                                     style="width: 100%; justify-content: center;">
                                     📝 Log Work
                                 </button>
-                                <button @click="goToMap" class="btn-secondary" style="width: 100%;">
+                                <button @click="goToMap()" class="btn-secondary" style="width: 100%;">
                                     🗺️ View Map
                                 </button>
                                 <button @click="viewAllAssignments" class="btn-secondary" style="width: 100%;">
@@ -673,11 +686,63 @@
                 </div>
             </div>
 
-            <!-- Quick Log Modal -->
-            <div v-if="showQuickLog" class="modal-overlay" @click.self="showQuickLog = false">
+            <!-- Assignment Details Modal -->
+            <div v-if="showAssignmentDetail && selectedAssignment" v-cloak class="modal-overlay"
+                @click.self="showAssignmentDetail = false">
                 <div class="modal-content">
-                    <h2 style="font-size: 24px; font-weight: 700; color: #ffd700; margin-bottom: 24px;">Quick Log Work
+                    <h2 style="font-size: 24px; font-weight: 700; color: #ffd700; margin-bottom: 24px;">
+                        Assignment Details
                     </h2>
+
+                    <div style="margin-bottom: 16px;">
+                        <div style="font-weight: 600; color: #ffffff; margin-bottom: 8px;">
+                            {{ selectedAssignment.floor_name || 'Assignment' }}
+                        </div>
+                        <div style="color: #9ca3af; margin-bottom: 12px;">
+                            {{ selectedAssignment.work_type || selectedAssignment.description || 'No description' }}
+                        </div>
+                        <div v-if="selectedAssignment.work_description"
+                            style="color: #d1d5db; font-size: 14px; margin-bottom: 12px;">
+                            {{ selectedAssignment.work_description }}
+                        </div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 16px; font-size: 14px; color: #9ca3af;">
+                            <span>📅 Due: {{ formatDate(selectedAssignment.due_date) }}</span>
+                            <span v-if="selectedAssignment.assigned_by_name">👤 Assigned by: {{ selectedAssignment.assigned_by_name }}</span>
+                            <span :style="`background: ${getStatusColor(selectedAssignment.status)}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;`">
+                                {{ selectedAssignment.status?.toUpperCase() || 'PENDING' }}
+                            </span>
+                        </div>
+                        <div v-if="selectedAssignment.notes" style="margin-top: 12px; padding: 12px; background: rgba(0,0,0,0.3); border-radius: 8px; color: #9ca3af; font-size: 14px;">
+                            <strong>Notes:</strong> {{ selectedAssignment.notes }}
+                        </div>
+                    </div>
+
+                    <div v-if="selectedAssignment.status !== 'completed'" style="margin-bottom: 16px;">
+                        <label class="form-label">Update Status</label>
+                        <select v-model="assignmentStatusEdit" class="form-select" @change="updateAssignmentStatus">
+                            <option value="pending">Pending</option>
+                            <option value="in-progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                    </div>
+
+                    <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
+                        <button type="button" @click="showAssignmentDetail = false" class="btn-secondary">Close</button>
+                        <button type="button" @click="showAssignmentDetail = false; goToMap(selectedAssignment)" class="btn-primary">
+                            🗺️ Go to Map
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Log Modal -->
+            <div v-if="showQuickLog" v-cloak class="modal-overlay" @click.self="showQuickLog = false">
+                <div class="modal-content" @click.stop>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                        <h2 style="font-size: 24px; font-weight: 700; color: #ffd700; margin: 0;">Quick Log Work</h2>
+                        <button type="button" @click="showQuickLog = false" title="Close"
+                            style="background: none; border: none; color: #9ca3af; font-size: 24px; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+                    </div>
 
                     <form @submit.prevent="submitQuickLog">
                         <div class="form-group" v-if="projects.length > 0">
@@ -738,9 +803,10 @@
     </div>
 
     <script>
-        const { createApp } = Vue;
+        document.addEventListener('DOMContentLoaded', () => {
+            const { createApp } = Vue;
 
-        createApp({
+            createApp({
             data() {
                 return {
                     currentUser: null,
@@ -752,6 +818,10 @@
                     },
                     assignments: [],
                     notifications: [],
+                    notificationsLoading: false,
+                    showAssignmentDetail: false,
+                    selectedAssignment: null,
+                    assignmentStatusEdit: '',
                     recentLogs: [],
                     projects: [],
                     selectedProject: null,
@@ -780,9 +850,17 @@
                 await this.loadData();
                 this._onUserUpdated = () => this.refreshCurrentUser();
                 window.addEventListener('auth:user-updated', this._onUserUpdated);
+                this._onEscape = (e) => {
+                    if (e.key === 'Escape' && (this.showQuickLog || this.showAssignmentDetail)) {
+                        this.showQuickLog = false;
+                        this.showAssignmentDetail = false;
+                    }
+                };
+                window.addEventListener('keydown', this._onEscape);
             },
             beforeUnmount() {
                 window.removeEventListener('auth:user-updated', this._onUserUpdated);
+                window.removeEventListener('keydown', this._onEscape);
             },
             methods: {
                 refreshCurrentUser() {
@@ -805,9 +883,9 @@
                 },
                 async loadData() {
                     await this.loadProjects();
+                    await this.loadAssignments();
                     await Promise.all([
                         this.loadStats(),
-                        this.loadAssignments(),
                         this.loadNotifications(),
                         this.loadRecentLogs(),
                         this.loadFloors()
@@ -818,55 +896,58 @@
                 },
                 async loadStats() {
                     try {
-                        const [statsRes, assignRes, notifRes] = await Promise.all([
-                            fetchWithAuth(`${API_BASE}/work-logs/dashboard`),
-                            fetchWithAuth(`${API_BASE}/assignments`),
-                            fetchWithAuth(`${API_BASE}/notifications`)
+                        const [statsResult, notifsResult] = await Promise.allSettled([
+                            window.workLogsService?.getDashboardStats(),
+                            window.notificationsService?.getAll?.({ limit: 50 }) ?? Promise.resolve([])
                         ]);
-                        const statsData = statsRes.ok ? await statsRes.json() : {};
-                        const assignments = assignRes.ok ? await assignRes.json() : [];
-                        const notifications = notifRes.ok ? await notifRes.json() : [];
-
-                        this.stats.completedLogs = statsData.total_logs || 0;
+                        const statsData = statsResult.status === 'fulfilled' ? statsResult.value : {};
+                        const notifications = notifsResult.status === 'fulfilled'
+                            ? (Array.isArray(notifsResult.value) ? notifsResult.value : [])
+                            : [];
+                        this.stats.completedLogs = statsData?.total_logs ?? 0;
                         this.stats.unreadNotifications = notifications.filter((n) => !n.is_read).length;
-                        this.stats.pendingTasks = assignments.filter((a) => a.status === 'pending').length;
+                        this.stats.pendingTasks = (this.assignments || []).filter((a) => a.status === 'pending').length;
                     } catch (error) {
                         console.error('Error loading stats:', error);
                     }
                 },
                 async loadAssignments() {
                     try {
-                        const response = await fetchWithAuth('http://localhost:5000/api/assignments');
-                        this.assignments = await response.json();
+                        this.assignments = await window.assignmentsService.getAll();
                     } catch (error) {
                         console.error('Error loading assignments:', error);
                     }
                 },
                 async loadNotifications() {
+                    if (!window.notificationsService) {
+                        console.error('Notifications service not available');
+                        this.notifications = [];
+                        return;
+                    }
+                    this.notificationsLoading = true;
                     try {
-                        const response = await fetchWithAuth('http://localhost:5000/api/notifications');
-                        this.notifications = (await response.json()).slice(0, 10); // Show latest 10
+                        const notifications = await window.notificationsService.getAll({ limit: 10 });
+                        this.notifications = Array.isArray(notifications) ? notifications.slice(0, 10) : [];
                     } catch (error) {
                         console.error('Error loading notifications:', error);
+                        this.notifications = [];
+                    } finally {
+                        this.notificationsLoading = false;
                     }
                 },
                 async loadRecentLogs() {
                     try {
-                        const response = await fetchWithAuth(`${API_BASE}/work-logs`);
-                        const allLogs = response.ok ? await response.json() : [];
-                        this.recentLogs = allLogs.slice(0, 5);
+                        const allLogs = await window.workLogsService.getAll();
+                        this.recentLogs = (allLogs || []).slice(0, 5);
                     } catch (error) {
                         console.error('Error loading recent logs:', error);
                     }
                 },
                 async loadProjects() {
                     try {
-                        const response = await fetchWithAuth(`${API_BASE}/projects`);
-                        if (response.ok) {
-                            this.projects = await response.json();
-                            if (this.projects.length === 1) {
-                                this.selectedProject = this.projects[0];
-                            }
+                        this.projects = await window.projectsService.getAll();
+                        if (this.projects && this.projects.length === 1) {
+                            this.selectedProject = this.projects[0];
                         }
                     } catch (error) {
                         console.error('Error loading projects:', error);
@@ -879,12 +960,7 @@
                             this.floors = [];
                             return;
                         }
-                        const response = await fetchWithAuth(`${API_BASE}/floors?project_id=${projectId}`);
-                        if (response.ok) {
-                            this.floors = await response.json();
-                        } else {
-                            this.floors = [];
-                        }
+                        this.floors = await window.floorsService.getAll({ project_id: projectId }) || [];
                     } catch (error) {
                         console.error('Error loading floors:', error);
                         this.floors = [];
@@ -898,28 +974,19 @@
                 },
                 async submitQuickLog() {
                     try {
-                        const response = await fetchWithAuth(`${API_BASE}/work-logs/enhanced`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(this.quickLog)
-                        });
-
-                        if (response.ok) {
-                            alert('Work log saved successfully!');
-                            this.showQuickLog = false;
-                            this.quickLog = {
-                                work_date: new Date().toISOString().split('T')[0],
-                                floor_id: '',
-                                work_type: '',
-                                hours_worked: '',
-                                description: '',
-                                x_coord: 0.5,
-                                y_coord: 0.5
-                            };
-                            await this.loadData();
-                        } else {
-                            alert('Error saving work log');
-                        }
+                        await window.workLogsService.createEnhanced(this.quickLog);
+                        alert('Work log saved successfully!');
+                        this.showQuickLog = false;
+                        this.quickLog = {
+                            work_date: new Date().toISOString().split('T')[0],
+                            floor_id: '',
+                            work_type: '',
+                            hours_worked: '',
+                            description: '',
+                            x_coord: 0.5,
+                            y_coord: 0.5
+                        };
+                        await this.loadData();
                     } catch (error) {
                         console.error('Error submitting log:', error);
                         alert('Error saving work log');
@@ -927,9 +994,7 @@
                 },
                 async markAsRead(notifId) {
                     try {
-                        await fetchWithAuth(`http://localhost:5000/api/notifications/${notifId}/read`, {
-                            method: 'PUT'
-                        });
+                        await window.notificationsService.markAsRead(notifId);
                         await this.loadNotifications();
                         await this.loadStats();
                     } catch (error) {
@@ -938,9 +1003,7 @@
                 },
                 async markAllAsRead() {
                     try {
-                        await fetchWithAuth('http://localhost:5000/api/notifications/read-all', {
-                            method: 'PUT'
-                        });
+                        await window.notificationsService.markAllAsRead();
                         await this.loadNotifications();
                         await this.loadStats();
                     } catch (error) {
@@ -948,34 +1011,47 @@
                     }
                 },
                 viewAssignment(assignment) {
-                    // TODO: Open assignment details modal
-                    console.log('View assignment:', assignment);
+                    this.selectedAssignment = assignment;
+                    this.assignmentStatusEdit = assignment.status || 'pending';
+                    this.showAssignmentDetail = true;
                 },
-                goToMap() {
-                    window.location.href = 'index.html';
+                async updateAssignmentStatus() {
+                    if (!this.selectedAssignment || !this.assignmentStatusEdit) return;
+                    try {
+                        await window.assignmentsService.updateStatus(
+                            this.selectedAssignment.id,
+                            this.assignmentStatusEdit
+                        );
+                        this.selectedAssignment.status = this.assignmentStatusEdit;
+                        await this.loadAssignments();
+                        await this.loadStats();
+                    } catch (error) {
+                        console.error('Error updating assignment status:', error);
+                        alert(error.message || 'Failed to update status');
+                    }
+                },
+                goToMap(assignment) {
+                    let url = 'index.html';
+                    if (assignment && assignment.floor_id != null && assignment.project_id != null &&
+                        assignment.x_coord != null && assignment.y_coord != null) {
+                        const params = new URLSearchParams({
+                            projectId: assignment.project_id,
+                            floorId: assignment.floor_id,
+                            x: assignment.x_coord,
+                            y: assignment.y_coord
+                        });
+                        if (assignment.id) params.set('assignmentId', assignment.id);
+                        url += '?' + params.toString();
+                    }
+                    window.location.href = url;
                 },
                 viewAllAssignments() {
                     // Scroll to assignments section
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                 },
-                getStatusColor(status) {
-                    const colors = {
-                        'pending': '#f59e0b',
-                        'in-progress': '#3b82f6',
-                        'completed': '#10b981'
-                    };
-                    return colors[status] || '#6b7280';
-                },
-                formatDate(dateStr) {
-                    if (!dateStr) return 'Not set';
-                    const date = new Date(dateStr);
-                    return date.toLocaleDateString();
-                },
-                formatDateTime(dateStr) {
-                    if (!dateStr) return '';
-                    const date = new Date(dateStr);
-                    return date.toLocaleString();
-                },
+                getStatusColor(status) { return window.FormatUtils?.getStatusColor(status) ?? '#6b7280'; },
+                formatDate(dateStr) { return window.DateUtils?.formatDate(dateStr) ?? 'Not set'; },
+                formatDateTime(dateStr) { return window.DateUtils?.formatDateTime(dateStr) ?? ''; },
                 toggleSidebar() {
                     this.sidebarOpen = !this.sidebarOpen;
                 },
@@ -987,6 +1063,7 @@
                 }
             }
         }).mount('#app');
+        });
     </script>
 </body>
 

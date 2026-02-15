@@ -9,12 +9,12 @@ class FloorsService {
   }
 
   /**
-   * Get all floors
+   * Get all floors, optionally filtered by project_id
    */
-  async getAll() {
+  async getAll(params = {}) {
     try {
-      const response = await this.client.get("/floors");
-      console.log(`✅ Loaded ${response.length} floors`);
+      const response = await this.client.get("/floors", params);
+      console.log(`✅ Loaded ${response?.length ?? 0} floors`);
       return response;
     } catch (error) {
       console.error("❌ Failed to fetch floors:", error.message);

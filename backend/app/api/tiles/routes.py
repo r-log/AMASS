@@ -158,12 +158,13 @@ def serve_tile(floor_id, tile_path):
         directory = os.path.dirname(full_path)
         filename = os.path.basename(full_path)
 
-        # Serve the file with appropriate MIME type
+        # Serve the file with appropriate MIME type and cache headers
         if filename.endswith('.dzi'):
-            return send_from_directory(directory, filename, mimetype='application/xml')
+            response = send_from_directory(directory, filename, mimetype='application/xml')
         else:
-            # Tile images (png, jpg, etc.)
-            return send_from_directory(directory, filename)
+            response = send_from_directory(directory, filename)
+        response.headers['Cache-Control'] = 'public, max-age=86400'
+        return response
 
     except FileNotFoundError:
         return jsonify({'error': f'Tile not found: {tile_path}'}), 404

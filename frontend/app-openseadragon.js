@@ -326,9 +326,20 @@ createApp({
 
       // Modals
       showModal: false,
+      showAssignmentModal: false,
       showDetailsModal: false,
       selectedLogDetails: null,
       clickCoordinates: null,
+
+      // Assignment pin (supervisor places pin, assigns workers)
+      projectWorkers: [],
+      assignmentForm: {
+        work_type: "",
+        description: "",
+        due_date: "",
+        selectedWorkerIds: [],
+      },
+      assignmentSubmitting: false,
 
       // Edit mode tracking
       editMode: false,
@@ -418,6 +429,9 @@ createApp({
         workType: null,
         timeline: null,
       },
+
+      // Pending zoom to pin (from "Go to Map" URL params)
+      pendingZoomToPin: null,
     };
   },
 
@@ -553,10 +567,45 @@ createApp({
     console.log("🔐 User authenticated:", this.currentUser);
 
     await this.fetchProjects();
+
+    // Parse URL params for "Go to Map" from assignment (projectId, floorId, x, y)
+    const params = new URLSearchParams(window.location.search);
+    const projectId = params.get("projectId");
+    const floorId = params.get("floorId");
+    const xParam = params.get("x");
+    const yParam = params.get("y");
+    if (
+      projectId &&
+      floorId &&
+      xParam != null &&
+      yParam != null &&
+      this.projects.length > 0
+    ) {
+      const projId = parseInt(projectId, 10);
+      const flId = parseInt(floorId, 10);
+      const x = parseFloat(xParam);
+      const y = parseFloat(yParam);
+      const project = this.projects.find((p) => p.id === projId);
+      if (project) {
+        this.currentView = "map";
+        await this.selectProject(project);
+        const floor = this.floors.find((f) => f.id === flId);
+        if (floor) {
+          await this.selectFloor(floor);
+        }
+        this.pendingZoomToPin = { x, y };
+      }
+    }
+
+    if (this.projects.length > 0 && !this.selectedProject) {
+      await this.selectProject(this.projects[0]);
+    }
     await this.fetchFloors();
-    await this.fetchStats();
-    await this.fetchLogs();
-    await this.checkAllTileStatuses();
+    await Promise.all([
+      this.fetchStats(),
+      this.fetchLogs(),
+      this.checkAllTileStatuses(),
+    ]);
 
     // Set up keyboard shortcuts for date navigation
     this.setupKeyboardShortcuts();
@@ -578,21 +627,16 @@ createApp({
     // API calls
     async fetchProjects() {
       try {
-        const response = await fetchWithAuth(`${API_BASE}/projects`);
-        if (response.ok) {
-          this.projects = await response.json();
-          console.log("✅ Projects loaded:", this.projects.length);
-          const stillExists = this.selectedProject && this.projects.some((p) => p.id === this.selectedProject.id);
-          if (!stillExists && this.selectedProject) {
-            this.selectedProject = null;
-            this.selectedFloor = null;
-            this.floors = [];
-          }
-          if (this.projects.length > 0 && !this.selectedProject) {
-            this.selectProject(this.projects[0]);
-          }
-        } else {
-          this.projects = [];
+        this.projects = await window.projectsService.getAll() || [];
+        console.log("✅ Projects loaded:", this.projects.length);
+        const stillExists = this.selectedProject && this.projects.some((p) => p.id === this.selectedProject.id);
+        if (!stillExists && this.selectedProject) {
+          this.selectedProject = null;
+          this.selectedFloor = null;
+          this.floors = [];
+        }
+        if (this.projects.length > 0 && !this.selectedProject) {
+          this.selectProject(this.projects[0]);
         }
       } catch (error) {
         console.error("Error fetching projects:", error);
@@ -607,20 +651,12 @@ createApp({
           this.floors = [];
           return;
         }
-        const url = projectId
-          ? `${API_BASE}/floors?project_id=${projectId}`
-          : `${API_BASE}/floors`;
+        const params = projectId ? { project_id: projectId } : {};
         console.log("🔍 Fetching floors...", projectId ? `project=${projectId}` : "all");
-        const response = await fetchWithAuth(url);
-        if (response.ok) {
-          this.floors = await response.json();
-          console.log("✅ Floors loaded:", this.floors.length);
-          if (this.selectedFloor && !this.floors.find((f) => f.id === this.selectedFloor.id)) {
-            this.selectedFloor = null;
-          }
-        } else {
-          console.error("❌ Failed to fetch floors, status:", response.status);
-          this.floors = [];
+        this.floors = await window.floorsService.getAll(params) || [];
+        console.log("✅ Floors loaded:", this.floors.length);
+        if (this.selectedFloor && !this.floors.find((f) => f.id === this.selectedFloor.id)) {
+          this.selectedFloor = null;
         }
       } catch (error) {
         console.error("Error fetching floors:", error);
@@ -644,40 +680,29 @@ createApp({
     async fetchStats() {
       try {
         console.log("📊 Fetching stats...");
-        const response = await fetchWithAuth(`${API_BASE}/work-logs/dashboard`);
-        if (response.ok) {
-          this.stats = await response.json();
-          console.log("✅ Stats loaded");
-        } else {
-          console.warn("Stats endpoint not available, using defaults");
-          this.stats = {
-            total_logs: this.allLogs.length,
-            recent_logs: 0,
-            logs_by_floor: [],
-            work_types: [],
-          };
-        }
+        this.stats = await window.workLogsService.getDashboardStats();
+        console.log("✅ Stats loaded");
       } catch (error) {
         console.error("Error fetching stats:", error);
+        this.stats = {
+          total_logs: this.allLogs?.length || 0,
+          recent_logs: 0,
+          logs_by_floor: [],
+          work_types: [],
+        };
       }
     },
 
     async fetchLogs() {
       try {
-        const params = new URLSearchParams();
-        if (this.filters.floor_id)
-          params.append("floor_id", this.filters.floor_id);
-        if (this.filters.start_date)
-          params.append("start_date", this.filters.start_date);
-        if (this.filters.end_date)
-          params.append("end_date", this.filters.end_date);
+        const params = {};
+        if (this.filters.floor_id) params.floor_id = this.filters.floor_id;
+        if (this.filters.start_date) params.start_date = this.filters.start_date;
+        if (this.filters.end_date) params.end_date = this.filters.end_date;
 
         console.log("📋 Fetching work logs...");
-        const response = await fetchWithAuth(`${API_BASE}/work-logs?${params}`);
-        if (response.ok) {
-          this.allLogs = await response.json();
-          console.log("✅ Work logs loaded:", this.allLogs.length);
-        }
+        this.allLogs = await window.workLogsService.getAll(params) || [];
+        console.log("✅ Work logs loaded:", this.allLogs.length);
       } catch (error) {
         console.error("Error fetching logs:", error);
       }
@@ -686,14 +711,9 @@ createApp({
     async fetchFloorLogs(floorId) {
       try {
         console.log(`📋 Fetching logs for floor ${floorId}...`);
-        const response = await fetchWithAuth(
-          `${API_BASE}/work-logs?floor_id=${floorId}`
-        );
-        if (response.ok) {
-          this.currentFloorLogs = await response.json();
-          console.log("✅ Floor logs loaded:", this.currentFloorLogs.length);
-          this.updateMarkerOverlays();
-        }
+        this.currentFloorLogs = await window.workLogsService.getByFloor(floorId) || [];
+        console.log("✅ Floor logs loaded:", this.currentFloorLogs.length);
+        this.updateMarkerOverlays();
       } catch (error) {
         console.error("Error fetching floor logs:", error);
       }
@@ -701,25 +721,22 @@ createApp({
 
     // Tile management
     async checkAllTileStatuses() {
-      for (const floor of this.floors) {
-        await this.checkTileStatus(floor.id);
-      }
+      if (!this.floors.length) return;
+      await Promise.all(
+        this.floors.map((floor) => this.checkTileStatus(floor.id))
+      );
     },
 
     async checkTileStatus(floorId) {
       try {
-        const response = await fetchWithAuth(
-          `${API_BASE}/tiles/status/${floorId}`
-        );
-        if (response.ok) {
-          const status = await response.json();
-          this.tileStatuses[floorId] = status;
-          return status;
-        }
-        return { tiles_exist: false };
+        const status = await window.tilesService.getStatus(floorId);
+        this.tileStatuses[floorId] = status;
+        return status;
       } catch (error) {
         console.error("Error checking tile status:", error);
-        return { tiles_exist: false };
+        const fallback = { tiles_exist: false };
+        this.tileStatuses[floorId] = fallback;
+        return fallback;
       }
     },
 
@@ -727,21 +744,9 @@ createApp({
       this.tileGenerationStatus = { generating: true };
 
       try {
-        const body = imagePath
-          ? { floor_id: floorId, image_path: imagePath }
-          : { floor_id: floorId };
-        const response = await fetchWithAuth(
-          `${API_BASE}/tiles/generate/${floorId}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          }
-        );
+        const result = await window.tilesService.generate(floorId, imagePath);
 
-        const result = await response.json();
-
-        if (response.ok && result.success !== false) {
+        if (result && result.success !== false) {
           this.tileGenerationStatus = { success: true };
           await this.checkTileStatus(floorId);
 
@@ -768,14 +773,7 @@ createApp({
       this.batchResults = [];
 
       try {
-        const response = await fetchWithAuth(
-          `${API_BASE}/tiles/batch-generate`,
-          {
-            method: "POST",
-          }
-        );
-
-        const result = await response.json();
+        const result = await window.tilesService.batchGenerate();
         this.batchResults = result.results || [];
 
         // Refresh tile statuses
@@ -813,7 +811,7 @@ createApp({
           // User has permission - generate tiles
           console.log("🔑 User has permission to generate tiles");
           this.initializeViewer();
-          await this.generateTilesForFloor(floor.id, floor.image_path);
+          await this.generateTilesForFloor(floor.id, floor?.image_path);
         } else {
           // User doesn't have permission
           console.warn("🚫 User lacks permission to generate tiles");
@@ -1080,6 +1078,11 @@ createApp({
           setTimeout(() => {
             console.log("🕐 Delayed marker update after viewer ready");
             this.updateMarkerOverlays();
+            // Zoom to pin if navigated from "Go to Map" with URL params
+            if (this.pendingZoomToPin) {
+              this.zoomToPin(this.pendingZoomToPin.x, this.pendingZoomToPin.y);
+              this.pendingZoomToPin = null;
+            }
           }, 500);
         });
 
@@ -1212,6 +1215,25 @@ createApp({
       );
     },
 
+    /**
+     * Zoom map view to a pin at normalized coords (0-1).
+     * Used when navigating from "Go to Map" on an assignment.
+     */
+    zoomToPin(x, y) {
+      if (!this.viewer || !this.viewer.world.getItemCount() || !this.markerManager) {
+        console.warn("🚫 Cannot zoom to pin: viewer or MarkerManager not ready");
+        return;
+      }
+      const viewportPoint = this.markerManager.logCoordsToViewport({
+        x_coord: x,
+        y_coord: y,
+      });
+      const zoomLevel = 5;
+      this.viewer.viewport.panTo(viewportPoint);
+      this.viewer.viewport.zoomTo(zoomLevel);
+      console.log(`📍 Zoomed to pin at (${x}, ${y}), zoom ${zoomLevel}`);
+    },
+
     // Date Navigation Methods
     previousDay() {
       if (!this.hasPreviousDate) return;
@@ -1278,15 +1300,7 @@ createApp({
       this.updateMarkerOverlays();
     },
 
-    formatDateFull(dateString) {
-      const date = new Date(dateString);
-      return date.toLocaleDateString("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-    },
+    formatDateFull(dateString) { return window.DateUtils?.formatDateFull(dateString) ?? "-"; },
 
     // Keyboard shortcuts for date and floor navigation
     setupKeyboardShortcuts() {
@@ -1413,12 +1427,25 @@ createApp({
 
     // Work log management
     openWorkLogModal(x, y) {
+      if (!this.selectedFloor) {
+        alert("Please select a floor first.");
+        return;
+      }
       console.log(
         `📝 OPENING CREATE MODAL at position (${(x * 100).toFixed(1)}%, ${(
           y * 100
         ).toFixed(1)}%)`
       );
       this.clickCoordinates = { x, y };
+
+      const isSupervisor = this.currentUser &&
+        (this.currentUser.role === "supervisor" || this.currentUser.role === "admin");
+
+      if (isSupervisor) {
+        this.openAssignmentModal(x, y);
+        return;
+      }
+
       this.newLog = {
         floor_id: this.selectedFloor.id,
         x_coord: x,
@@ -1430,6 +1457,84 @@ createApp({
       };
       this.showModal = true;
       console.log(`✅ Create modal opened - showModal = ${this.showModal}`);
+    },
+
+    async openAssignmentModal(x, y) {
+      this.clickCoordinates = { x, y };
+      this.assignmentForm = {
+        work_type: "",
+        description: "",
+        due_date: new Date().toISOString().split("T")[0],
+        selectedWorkerIds: [],
+      };
+      this.projectWorkers = [];
+      const projectId = this.selectedFloor?.project_id || this.selectedProject?.id;
+      if (projectId) {
+        try {
+          this.projectWorkers = await window.projectsService.getWorkers(projectId) || [];
+        } catch (e) {
+          console.error("Error loading project workers:", e);
+        }
+      }
+      this.showAssignmentModal = true;
+    },
+
+    closeAssignmentModal() {
+      this.showAssignmentModal = false;
+      this.clickCoordinates = null;
+      this.projectWorkers = [];
+      this.assignmentForm = { work_type: "", description: "", due_date: "", selectedWorkerIds: [] };
+    },
+
+    toggleAssignmentWorker(workerId) {
+      const ids = this.assignmentForm.selectedWorkerIds;
+      const idx = ids.indexOf(workerId);
+      if (idx >= 0) ids.splice(idx, 1);
+      else ids.push(workerId);
+    },
+
+    async submitAssignmentPin() {
+      if (!this.clickCoordinates || !this.selectedFloor) return;
+      if (!this.assignmentForm.work_type || !this.assignmentForm.description) {
+        alert("Please enter work type and description.");
+        return;
+      }
+      if (!this.assignmentForm.selectedWorkerIds.length) {
+        alert("Please select at least one worker to assign.");
+        return;
+      }
+      this.assignmentSubmitting = true;
+      try {
+        const { x, y } = this.clickCoordinates;
+        const workLogData = {
+          floor_id: this.selectedFloor.id,
+          x_coord: x,
+          y_coord: y,
+          work_date: this.assignmentForm.due_date || new Date().toISOString().split("T")[0],
+          work_type: this.assignmentForm.work_type,
+          description: this.assignmentForm.description,
+        };
+        const createResult = await window.workLogsService.create(workLogData);
+        const workLogId = createResult?.work_log?.id || createResult?.id;
+        if (!workLogId) throw new Error("Work log was not created");
+        for (const workerId of this.assignmentForm.selectedWorkerIds) {
+          await window.assignmentsService.create({
+            work_log_id: workLogId,
+            assigned_to: workerId,
+            due_date: this.assignmentForm.due_date,
+            notes: this.assignmentForm.description,
+          });
+        }
+        alert("Assignment created. Workers have been notified.");
+        this.closeAssignmentModal();
+        await this.fetchFloorLogs(this.selectedFloor.id);
+        await this.fetchStats();
+      } catch (error) {
+        console.error("Error creating assignment:", error);
+        alert(error.message || "Failed to create assignment");
+      } finally {
+        this.assignmentSubmitting = false;
+      }
     },
 
     async submitWorkLog() {
@@ -1608,14 +1713,7 @@ createApp({
       return classes[workType] || "bg-gray-100 text-gray-800";
     },
 
-    formatDate(dateString) {
-      const date = new Date(dateString);
-      return date.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-    },
+    formatDate(dateString) { return window.DateUtils?.formatDate(dateString) ?? "-"; },
 
     // Dashboard helper methods
     getFloorLogsCount(floorId) {

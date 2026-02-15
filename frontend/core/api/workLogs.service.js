@@ -56,6 +56,20 @@ class WorkLogsService {
   }
 
   /**
+   * Create enhanced work log (with cable details)
+   */
+  async createEnhanced(workLogData) {
+    try {
+      const response = await this.client.post("/work-logs/enhanced", workLogData);
+      console.log("✅ Enhanced work log created");
+      return response;
+    } catch (error) {
+      console.error("❌ Failed to create enhanced work log:", error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Create new work log
    */
   async create(workLogData) {

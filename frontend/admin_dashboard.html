@@ -6,22 +6,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard - Electrician Work Log</title>
 
-    <!-- Vue 3 from CDN -->
+    <!-- Vue 3 from CDN (no defer - must load before inline app script) -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 
     <!-- Tailwind CSS from CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com" defer></script>
 
     <!-- Theme System -->
     <link rel="stylesheet" href="theme.css">
-    <script src="theme.js"></script>
+    <script src="theme.js" defer></script>
 
     <!-- New Modular Architecture -->
-    <script src="config/app.config.js"></script>
-    <script src="core/api/api.client.js"></script>
-    <script src="core/api/auth.service.js"></script>
-    <script src="core/utils/format.utils.js"></script>
-    <script src="auth.js"></script>
+    <script src="config/app.config.js" defer></script>
+    <script src="core/api/api.client.js" defer></script>
+    <script src="core/api/auth.service.js" defer></script>
+    <script src="core/api/workLogs.service.js" defer></script>
+    <script src="core/api/dashboard.service.js" defer></script>
+    <script src="core/utils/format.utils.js" defer></script>
+    <script src="auth.js" defer></script>
 
     <style>
         body { background: #0a0a0f; color: #f3f4f6; }
@@ -195,9 +197,10 @@
     </div>
 
     <script>
-        const { createApp } = Vue;
+        document.addEventListener('DOMContentLoaded', () => {
+            const { createApp } = Vue;
 
-        createApp({
+            createApp({
             data() {
                 return {
                     currentUser: null,
@@ -235,17 +238,14 @@
                 },
                 async loadData() {
                     try {
-                        const [supervisorsRes, workersRes, statsRes] = await Promise.all([
-                            fetchWithAuth(`${API_BASE}/auth/users?role=supervisor`),
-                            fetchWithAuth(`${API_BASE}/auth/users?role=worker`),
-                            fetchWithAuth(`${API_BASE}/work-logs/dashboard`)
+                        const [supervisors, workers, activityStats] = await Promise.all([
+                            window.authService.getUsersByRole('supervisor'),
+                            window.authService.getUsersByRole('worker'),
+                            window.workLogsService.getDashboardStats()
                         ]);
-                        if (supervisorsRes.ok) this.supervisors = await supervisorsRes.json();
-                        else this.supervisors = [];
-                        if (workersRes.ok) this.workers = await workersRes.json();
-                        else this.workers = [];
-                        if (statsRes.ok) this.activityStats = await statsRes.json();
-                        else this.activityStats = {};
+                        this.supervisors = supervisors || [];
+                        this.workers = workers || [];
+                        this.activityStats = activityStats || {};
                     } catch (e) {
                         console.error('Admin dashboard load error:', e);
                     }
@@ -253,6 +253,7 @@
                 logout() { logout(); }
             }
         }).mount('#app');
+        });
     </script>
 </body>
 

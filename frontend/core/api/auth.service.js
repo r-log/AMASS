@@ -130,6 +130,19 @@ class AuthService {
   }
 
   /**
+   * Get users by role (admin: any role; supervisor: workers only)
+   */
+  async getUsersByRole(role) {
+    try {
+      const response = await this.client.get("/auth/users", { role });
+      return response;
+    } catch (error) {
+      console.error(`❌ Failed to fetch users by role ${role}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Get current user profile
    */
   async getUserProfile() {

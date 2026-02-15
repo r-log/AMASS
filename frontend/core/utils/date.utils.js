@@ -19,6 +19,22 @@ const DateUtils = {
   },
 
   /**
+   * Format date and time for display (e.g., "Jan 15, 2024, 2:30 PM")
+   */
+  formatDateTime(dateString) {
+    if (!dateString) return "";
+
+    const date = new Date(dateString);
+    return date.toLocaleString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  },
+
+  /**
    * Format date to full display (e.g., "Monday, January 15, 2024")
    */
   formatDateFull(dateString) {

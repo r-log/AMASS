@@ -201,3 +201,215 @@ class ProjectBackupService:
             import traceback
             traceback.print_exc()
             return False, f"Failed to create backup: {str(e)}", None
+
+    @staticmethod
+    def restore_from_backup(
+        zip_path: Path,
+        floor_plans_dir: str,
+        user_id: int,
+    ) -> Tuple[bool, Optional[Project], str]:
+        """
+        Restore a project from a backup ZIP file.
+
+        Returns:
+            Tuple of (success, restored_project or None, message)
+        """
+        try:
+            from app.database.connection import insert_and_get_id
+            from app.models.user import User
+
+            user = User.find_by_id(user_id)
+            if not user or user.role not in ("supervisor", "admin"):
+                return False, None, "Supervisor or admin required to restore projects"
+
+            floor_plans_path = Path(floor_plans_dir)
+            floor_plans_path.mkdir(parents=True, exist_ok=True)
+
+            with zipfile.ZipFile(zip_path, "r") as zf:
+                manifest_raw = zf.read("manifest.json").decode("utf-8")
+                manifest = json.loads(manifest_raw)
+
+                if manifest.get("backup_type") != "project":
+                    return False, None, "Invalid backup: not a project backup"
+
+                project_data = json.loads(zf.read("project.json").decode("utf-8"))
+                pua_data = json.loads(
+                    zf.read("project_user_assignments.json").decode("utf-8")
+                )
+                floors_data = json.loads(zf.read("floors.json").decode("utf-8"))
+                work_logs_data = json.loads(zf.read("work_logs.json").decode("utf-8"))
+                cable_routes_data = json.loads(
+                    zf.read("cable_routes.json").decode("utf-8")
+                )
+                critical_sectors_data = json.loads(
+                    zf.read("critical_sectors.json").decode("utf-8")
+                )
+                assignments_data = json.loads(zf.read("assignments.json").decode("utf-8"))
+
+            # 1. Create project (exclude id)
+            project = Project(
+                name=project_data.get("name", "Restored Project"),
+                description=project_data.get("description", ""),
+                is_active=True,
+                created_by=user_id,
+            )
+            project.save()
+            new_project_id = project.id
+
+            # 2. Floor ID mapping: old_id -> new_id
+            floor_id_map = {}
+            for fd in floors_data:
+                old_id = fd.get("id")
+                floor = Floor(
+                    project_id=new_project_id,
+                    name=fd.get("name", "Floor"),
+                    image_path=fd.get("image_path", "placeholder.pdf"),
+                    width=int(fd.get("width", 1920)),
+                    height=int(fd.get("height", 1080)),
+                    sort_order=int(fd.get("sort_order", 0)),
+                    is_active=fd.get("is_active", True),
+                )
+                floor.save()
+                if old_id is not None:
+                    floor_id_map[int(old_id)] = floor.id
+
+            # 3. Extract floor plan files to floor-plans directory
+            try:
+                with zipfile.ZipFile(zip_path, "r") as zf:
+                    for name in zf.namelist():
+                        if name.startswith("floor-plans/") and not name.endswith("/"):
+                            fname = Path(name).name
+                            dest = floor_plans_path / fname
+                            with zf.open(name) as src, open(dest, "wb") as out:
+                                shutil.copyfileobj(src, out)
+            except Exception as ex:
+                print(f"Warning: could not extract floor plans: {ex}")
+
+            # 4. Project user assignments
+            for pua in pua_data:
+                pid = pua.get("project_id")
+                uid = pua.get("user_id")
+                if pid is not None and uid is not None:
+                    ProjectUserAssignment.assign(
+                        new_project_id, int(uid), pua.get("assigned_by")
+                    )
+
+            # 5. Work logs with floor ID mapping
+            work_log_id_map = {}
+            for wl in work_logs_data:
+                old_floor_id = wl.get("floor_id")
+                new_floor_id = floor_id_map.get(old_floor_id) if old_floor_id else None
+                if new_floor_id is None:
+                    continue
+
+                db = get_db()
+                new_id = insert_and_get_id(
+                    """INSERT INTO work_logs (floor_id, worker_id, x_coord, y_coord,
+                       work_date, worker_name, work_type, job_type, description,
+                       cable_type, cable_meters, start_x, start_y, end_x, end_y,
+                       hours_worked, status, priority)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        new_floor_id,
+                        wl.get("worker_id"),
+                        float(wl.get("x_coord", 0)),
+                        float(wl.get("y_coord", 0)),
+                        wl.get("work_date", ""),
+                        wl.get("worker_name", ""),
+                        wl.get("work_type", ""),
+                        wl.get("job_type"),
+                        wl.get("description", ""),
+                        wl.get("cable_type"),
+                        wl.get("cable_meters"),
+                        wl.get("start_x"),
+                        wl.get("start_y"),
+                        wl.get("end_x"),
+                        wl.get("end_y"),
+                        wl.get("hours_worked"),
+                        wl.get("status", "completed"),
+                        wl.get("priority", "medium"),
+                    ),
+                )
+                old_id = wl.get("id")
+                if old_id is not None:
+                    work_log_id_map[int(old_id)] = new_id
+
+            # 6. Cable routes
+            for cr in cable_routes_data:
+                old_wl_id = cr.get("work_log_id")
+                new_wl_id = work_log_id_map.get(old_wl_id) if old_wl_id else None
+                if new_wl_id is None:
+                    continue
+                route_points = cr.get("route_points")
+                rp_str = json.dumps(route_points) if route_points else "[]"
+                insert_and_get_id(
+                    """INSERT INTO cable_routes (work_log_id, route_points, cable_type,
+                       cable_cross_section, total_length, installation_method, notes)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        new_wl_id,
+                        rp_str,
+                        cr.get("cable_type", ""),
+                        cr.get("cable_cross_section"),
+                        cr.get("total_length"),
+                        cr.get("installation_method", ""),
+                        cr.get("notes", ""),
+                    ),
+                )
+
+            # 7. Critical sectors
+            for cs in critical_sectors_data:
+                old_floor_id = cs.get("floor_id")
+                new_floor_id = floor_id_map.get(old_floor_id) if old_floor_id else None
+                if new_floor_id is None:
+                    continue
+                sector = CriticalSector(
+                    floor_id=new_floor_id,
+                    sector_name=cs.get("sector_name", ""),
+                    x_coord=float(cs.get("x_coord", 0)),
+                    y_coord=float(cs.get("y_coord", 0)),
+                    radius=float(cs.get("radius", 0.1)),
+                    width=float(cs.get("width", 0.1)),
+                    height=float(cs.get("height", 0.1)),
+                    sector_type=cs.get("type", cs.get("sector_type", "rectangle")),
+                    priority=cs.get("priority", "standard"),
+                    points=cs.get("points"),
+                    created_by=cs.get("created_by"),
+                    is_active=cs.get("is_active", True),
+                )
+                sector.save()
+
+            # 8. Assignments (work_log_id can be null)
+            for a in assignments_data:
+                old_wl_id = a.get("work_log_id")
+                new_wl_id = work_log_id_map.get(old_wl_id) if old_wl_id else None
+                assigned_to = a.get("assigned_to")
+                assigned_by = a.get("assigned_by")
+                if assigned_to is None:
+                    continue
+                if assigned_by is None:
+                    assigned_by = user_id
+                insert_and_get_id(
+                    """INSERT INTO work_assignments (work_log_id, assigned_to, assigned_by,
+                       due_date, status, notes)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (
+                        new_wl_id,
+                        int(assigned_to),
+                        int(assigned_by),
+                        a.get("due_date"),
+                        a.get("status", "pending"),
+                        a.get("notes", ""),
+                    ),
+                )
+
+            return True, project, f"Project '{project.name}' restored successfully"
+
+        except zipfile.BadZipFile:
+            return False, None, "Invalid or corrupted backup file"
+        except KeyError as e:
+            return False, None, f"Backup missing required content: {e}"
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return False, None, f"Failed to restore: {str(e)}"
