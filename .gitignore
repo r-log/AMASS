@@ -3,6 +3,7 @@ backend/database.db
 backend/database.db-journal
 backend/*.db
 backend/*.db-journal
+backend/*.backup_*
 
 # Blueprints / floor plans - user-uploaded PDFs, may contain proprietary drawings
 floor-plans/
@@ -39,6 +40,10 @@ venv/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Project backups (compressed before delete)
+project-backups/
+**/project-backups/
 
 # Logs and temp
 *.log

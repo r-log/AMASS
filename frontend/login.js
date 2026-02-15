@@ -196,7 +196,7 @@ createApp({
       } else if (userData.role === "supervisor") {
         window.location.href = "supervisor_dashboard.html";
       } else if (userData.role === "admin") {
-        window.location.href = "index.html";
+        window.location.href = "admin_dashboard.html";
       } else {
         // Default fallback
         window.location.href = "index.html";

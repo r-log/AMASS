@@ -240,6 +240,14 @@ class CableRoute:
             return rows_affected > 0
         return False
 
+    @classmethod
+    def delete_by_work_log_id(cls, work_log_id: int) -> int:
+        """Delete all cable routes for a work log. Returns rows affected."""
+        return delete_record(
+            "DELETE FROM cable_routes WHERE work_log_id = ?",
+            (work_log_id,)
+        )
+
     def add_route_point(self, x: float, y: float, point_type: str = "waypoint") -> None:
         """Add a point to the cable route."""
         point = {

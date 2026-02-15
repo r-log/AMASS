@@ -140,6 +140,27 @@ class WorkLog:
         return [cls._from_db_row(row) for row in logs_data]
 
     @classmethod
+    def find_by_project_id(cls, project_id: int, limit: Optional[int] = None,
+                          offset: Optional[int] = None) -> List['WorkLog']:
+        """Find work logs for floors in a project."""
+        query = """
+            SELECT wl.*, f.name as floor_name
+            FROM work_logs wl
+            LEFT JOIN floors f ON wl.floor_id = f.id
+            WHERE f.project_id = ?
+            ORDER BY wl.created_at DESC
+        """
+        params = [project_id]
+        if limit:
+            query += " LIMIT ?"
+            params.append(limit)
+        if offset and limit:
+            query += " OFFSET ?"
+            params.append(offset)
+        logs_data = execute_query(query, tuple(params))
+        return [cls._from_db_row(row) for row in logs_data]
+
+    @classmethod
     def find_all(cls, limit: Optional[int] = None, offset: Optional[int] = None) -> List['WorkLog']:
         """Get all work logs with optional pagination."""
         query = """
@@ -235,6 +256,14 @@ class WorkLog:
             )
             return rows_affected > 0
         return False
+
+    @classmethod
+    def delete_by_floor_id(cls, floor_id: int) -> int:
+        """Delete all work logs for a floor. Returns rows affected."""
+        return delete_record(
+            "DELETE FROM work_logs WHERE floor_id = ?",
+            (floor_id,)
+        )
 
     def is_in_critical_area(self) -> bool:
         """Check if this work log is within any critical sector."""

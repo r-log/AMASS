@@ -37,17 +37,41 @@ class FloorsService {
   }
 
   /**
-   * Create new floor
+   * Create new floor (JSON)
    */
   async create(floorData) {
     try {
       const response = await this.client.post("/floors", floorData);
-      console.log("✅ Floor created:", response.name);
       return response;
     } catch (error) {
       console.error("❌ Failed to create floor:", error.message);
       throw error;
     }
+  }
+
+  /**
+   * Create floor with file upload (multipart)
+   */
+  async createWithUpload(projectId, name, file, opts = {}) {
+    const formData = new FormData();
+    formData.append("name", name);
+    formData.append("project_id", projectId);
+    if (file) formData.append("file", file);
+    if (opts.width) formData.append("width", opts.width);
+    if (opts.height) formData.append("height", opts.height);
+
+    const response = await fetch(`${this.client.baseUrl}/floors`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.client.authManager.getToken()}`,
+      },
+      body: formData,
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || "Failed to create floor");
+    }
+    return response.json();
   }
 
   /**

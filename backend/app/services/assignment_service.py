@@ -115,6 +115,35 @@ class AssignmentService:
             return False, f"Failed to update assignment status: {str(e)}"
 
     @staticmethod
+    def get_assignments(user_id: int, user_role: str,
+                       status: Optional[str] = None, assigned_to: Optional[int] = None,
+                       floor_id: Optional[int] = None, project_id: Optional[int] = None) -> List[Assignment]:
+        """Get assignments with flexible filtering."""
+        try:
+            # When project_id is set, use project-scoped query
+            if project_id:
+                assignments = Assignment.find_by_project_id(project_id)
+                if assigned_to:
+                    assignments = [a for a in assignments if a.assigned_to == assigned_to]
+                elif user_role == 'worker':
+                    assignments = [a for a in assignments if a.assigned_to == user_id]
+                if status:
+                    assignments = [a for a in assignments if a.status == status]
+                return assignments
+
+            # Legacy logic when no project_id
+            if status:
+                return AssignmentService.get_assignments_by_status(
+                    status, assigned_to or (user_id if user_role == 'worker' else None))
+            if assigned_to:
+                return AssignmentService.get_user_assignments(assigned_to, status)
+            return AssignmentService.get_user_assignments(
+                user_id, status, include_assigned_by=(user_role in ['admin', 'supervisor']))
+        except Exception as e:
+            print(f"Error getting assignments: {e}")
+            return []
+
+    @staticmethod
     def get_user_assignments(user_id: int, status_filter: Optional[str] = None,
                              include_assigned_by: bool = False) -> List[Assignment]:
         """Get assignments for a user (assigned to them or by them)."""

@@ -4,7 +4,7 @@ Tiles API routes.
 
 from flask import Blueprint, request, jsonify, send_from_directory
 from app.services.tile_service import TileService
-from app.utils.decorators import token_required, supervisor_or_admin_required
+from app.utils.decorators import token_required, supervisor_required
 import os
 
 tiles_bp = Blueprint('tiles', __name__)
@@ -28,35 +28,27 @@ def get_tile_configuration(floor_id):
 
 @tiles_bp.route('/generate/<int:floor_id>', methods=['POST'])
 @token_required
-@supervisor_or_admin_required
+@supervisor_required
 def generate_tiles(floor_id):
-    """Generate tiles for a floor plan."""
+    """Generate tiles for a floor plan. Uses floor_id from URL; image_path from body or Floor model."""
     try:
-        data = request.get_json()
-
-        if not data:
-            return jsonify({'error': 'Request body is required'}), 400
-
-        floor_id = data.get('floor_id')
+        data = request.get_json(silent=True) or {}
         image_path = data.get('image_path')
-
-        if not floor_id or not image_path:
-            return jsonify({'error': 'floor_id and image_path are required'}), 400
 
         success, message = TileService.generate_tiles(floor_id, image_path)
 
         if success:
-            return jsonify({'message': message}), 200
+            return jsonify({'message': message, 'success': True}), 200
         else:
-            return jsonify({'error': message}), 400
+            return jsonify({'error': message, 'success': False}), 400
 
     except Exception as e:
-        return jsonify({'error': f'Failed to generate tiles: {str(e)}'}), 500
+        return jsonify({'error': f'Failed to generate tiles: {str(e)}', 'success': False}), 500
 
 
 @tiles_bp.route('/regenerate/<int:floor_id>', methods=['POST'])
 @token_required
-@supervisor_or_admin_required
+@supervisor_required
 def regenerate_tiles(floor_id):
     """Regenerate tiles for a specific floor."""
     try:
@@ -93,7 +85,7 @@ def get_tile_status(floor_id):
 
 @tiles_bp.route('/clear/<int:floor_id>', methods=['DELETE'])
 @token_required
-@supervisor_or_admin_required
+@supervisor_required
 def clear_tiles(floor_id):
     """Clear tile cache for a specific floor."""
     try:
@@ -110,7 +102,7 @@ def clear_tiles(floor_id):
 
 @tiles_bp.route('/clear-all', methods=['DELETE'])
 @token_required
-@supervisor_or_admin_required
+@supervisor_required
 def clear_all_tiles():
     """Clear all tile caches."""
     try:
@@ -184,7 +176,7 @@ def serve_tile(floor_id, tile_path):
 
 @tiles_bp.route('/batch-generate', methods=['POST'])
 @token_required
-@supervisor_or_admin_required
+@supervisor_required
 def batch_generate_tiles():
     """Generate tiles for multiple floors."""
     try:

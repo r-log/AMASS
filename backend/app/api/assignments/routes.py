@@ -4,7 +4,7 @@ Assignments API routes.
 
 from flask import Blueprint, request, jsonify
 from app.services.assignment_service import AssignmentService
-from app.utils.decorators import token_required, supervisor_or_admin_required
+from app.utils.decorators import token_required, supervisor_required
 
 assignments_bp = Blueprint('assignments', __name__)
 
@@ -21,21 +21,16 @@ def get_assignments():
         status = request.args.get('status')
         assigned_to = request.args.get('assigned_to', type=int)
         floor_id = request.args.get('floor_id', type=int)
+        project_id = request.args.get('project_id', type=int)
 
-        # Workers only see their own assignments unless they specify otherwise (admin)
+        # Workers only see their own assignments unless they specify otherwise
         if user_role == 'worker' and not assigned_to:
             assigned_to = user_id
 
-        # Get assignments based on role
-        if status:
-            assignments = AssignmentService.get_assignments_by_status(
-                status, assigned_to or user_id)
-        elif assigned_to:
-            assignments = AssignmentService.get_user_assignments(
-                assigned_to, status)
-        else:
-            assignments = AssignmentService.get_user_assignments(
-                user_id, status, include_assigned_by=(user_role in ['admin', 'supervisor']))
+        assignments = AssignmentService.get_assignments(
+            user_id=user_id, user_role=user_role,
+            status=status, assigned_to=assigned_to,
+            floor_id=floor_id, project_id=project_id)
 
         return jsonify([assignment.to_dict() for assignment in assignments]), 200
 
@@ -69,7 +64,7 @@ def get_assignment(assignment_id):
 
 
 @assignments_bp.route('/', methods=['POST'])
-@supervisor_or_admin_required
+@supervisor_required
 def create_assignment():
     """Create a new work assignment."""
     try:
@@ -148,7 +143,7 @@ def update_assignment(assignment_id):
 
 
 @assignments_bp.route('/<int:assignment_id>', methods=['DELETE'])
-@supervisor_or_admin_required
+@supervisor_required
 def delete_assignment(assignment_id):
     """Delete an assignment."""
     try:
@@ -208,7 +203,7 @@ def update_assignment_status(assignment_id):
 
 
 @assignments_bp.route('/statistics', methods=['GET'])
-@supervisor_or_admin_required
+@supervisor_required
 def get_assignment_statistics():
     """Get assignment statistics."""
     try:
@@ -235,7 +230,7 @@ def get_my_assignment_stats():
 
 
 @assignments_bp.route('/overdue', methods=['GET'])
-@supervisor_or_admin_required
+@supervisor_required
 def get_overdue_assignments():
     """Get overdue assignments."""
     try:
@@ -248,7 +243,7 @@ def get_overdue_assignments():
 
 
 @assignments_bp.route('/by-worker/<int:worker_id>', methods=['GET'])
-@supervisor_or_admin_required
+@supervisor_required
 def get_assignments_by_worker(worker_id):
     """Get all assignments for a specific worker."""
     try:
@@ -263,7 +258,7 @@ def get_assignments_by_worker(worker_id):
 
 
 @assignments_bp.route('/bulk-create', methods=['POST'])
-@supervisor_or_admin_required
+@supervisor_required
 def bulk_create_assignments():
     """Create multiple assignments at once."""
     try:

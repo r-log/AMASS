@@ -175,17 +175,17 @@ class CriticalSectorService:
             return False, f"Failed to delete critical sector: {str(e)}"
 
     @staticmethod
-    def get_critical_sectors(floor_id: Optional[int] = None, active_only: bool = True) -> List[CriticalSector]:
+    def get_critical_sectors(floor_id: Optional[int] = None, project_id: Optional[int] = None,
+                            active_only: bool = True) -> List[CriticalSector]:
         """Get critical sectors with optional filtering."""
         try:
             if floor_id:
                 return CriticalSector.find_by_floor_id(floor_id, active_only)
-            else:
-                if active_only:
-                    return CriticalSector.find_all_active()
-                else:
-                    # Note: We don't have find_all method in the model, so we'll use find_all_active
-                    return CriticalSector.find_all_active()
+            if project_id:
+                return CriticalSector.find_by_project_id(project_id, active_only)
+            if active_only:
+                return CriticalSector.find_all_active()
+            return CriticalSector.find_all_active()
 
         except Exception as e:
             print(f"Error getting critical sectors: {e}")

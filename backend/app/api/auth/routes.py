@@ -218,6 +218,35 @@ def reset_password():
         return jsonify({'error': f'Password reset failed: {str(e)}'}), 500
 
 
+@auth_bp.route('/users', methods=['GET'])
+@token_required
+def list_users():
+    """List users, optionally filtered by role. Admin: any role. Supervisor: workers only."""
+    try:
+        from app.models.user import User
+
+        user_role = request.current_user.get('role')
+        role = request.args.get('role')
+
+        if user_role == 'admin':
+            if role:
+                users = User.find_by_role(role)
+            else:
+                users = User.find_all_active()
+        elif user_role == 'supervisor':
+            if role == 'worker':
+                users = User.find_by_role('worker')
+            else:
+                users = []
+        else:
+            return jsonify({'error': 'Insufficient permissions'}), 403
+
+        return jsonify([u.to_dict() for u in users]), 200
+
+    except Exception as e:
+        return jsonify({'error': f'Failed to list users: {str(e)}'}), 500
+
+
 @auth_bp.route('/profile', methods=['GET'])
 @token_required
 def get_profile():

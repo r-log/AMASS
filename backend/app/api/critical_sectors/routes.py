@@ -4,7 +4,7 @@ Critical Sectors API routes.
 
 from flask import Blueprint, request, jsonify
 from app.services.critical_sector_service import CriticalSectorService
-from app.utils.decorators import token_required, supervisor_or_admin_required
+from app.utils.decorators import token_required, supervisor_required
 
 critical_sectors_bp = Blueprint('critical_sectors', __name__, url_prefix='')
 critical_sectors_bp.strict_slashes = False
@@ -13,13 +13,14 @@ critical_sectors_bp.strict_slashes = False
 @critical_sectors_bp.route('/', methods=['GET'])
 @token_required
 def get_critical_sectors():
-    """Get all critical sectors with optional floor filtering."""
+    """Get critical sectors with optional floor or project filtering."""
     try:
         floor_id = request.args.get('floor_id', type=int)
+        project_id = request.args.get('project_id', type=int)
         active_only = request.args.get('active_only', 'true').lower() == 'true'
 
         sectors = CriticalSectorService.get_critical_sectors(
-            floor_id, active_only)
+            floor_id=floor_id, project_id=project_id, active_only=active_only)
 
         return jsonify([sector.to_dict() for sector in sectors]), 200
 
@@ -28,7 +29,7 @@ def get_critical_sectors():
 
 
 @critical_sectors_bp.route('/', methods=['POST'])
-@supervisor_or_admin_required
+@supervisor_required
 def create_critical_sector():
     """Create a new critical sector."""
     try:
@@ -78,7 +79,7 @@ def get_critical_sector(sector_id):
 
 
 @critical_sectors_bp.route('/<int:sector_id>', methods=['PUT'])
-@supervisor_or_admin_required
+@supervisor_required
 def update_critical_sector(sector_id):
     """Update an existing critical sector."""
     try:
@@ -105,7 +106,7 @@ def update_critical_sector(sector_id):
 
 
 @critical_sectors_bp.route('/<int:sector_id>', methods=['DELETE'])
-@supervisor_or_admin_required
+@supervisor_required
 def delete_critical_sector(sector_id):
     """Delete (deactivate) a critical sector."""
     try:
@@ -147,7 +148,7 @@ def get_sector_work_logs(sector_id):
 
 
 @critical_sectors_bp.route('/statistics', methods=['GET'])
-@supervisor_or_admin_required
+@supervisor_required
 def get_critical_sector_statistics():
     """Get statistics for critical sectors."""
     try:
@@ -206,7 +207,7 @@ def get_sectors_by_priority(priority):
 
 
 @critical_sectors_bp.route('/recent-work', methods=['GET'])
-@supervisor_or_admin_required
+@supervisor_required
 def get_recent_work_in_critical_sectors():
     """Get recent work that occurred in critical sectors."""
     try:
@@ -222,7 +223,7 @@ def get_recent_work_in_critical_sectors():
 
 
 @critical_sectors_bp.route('/bulk-update', methods=['PUT'])
-@supervisor_or_admin_required
+@supervisor_required
 def bulk_update_sectors():
     """Bulk update multiple critical sectors."""
     try:
@@ -252,7 +253,7 @@ def bulk_update_sectors():
 
 
 @critical_sectors_bp.route('/export', methods=['GET'])
-@supervisor_or_admin_required
+@supervisor_required
 def export_critical_sectors():
     """Export critical sectors in specified format."""
     try:

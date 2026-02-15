@@ -90,6 +90,23 @@ class CriticalSector:
         return [cls._from_db_row(row) for row in sectors_data]
 
     @classmethod
+    def find_by_project_id(cls, project_id: int, active_only: bool = True) -> List['CriticalSector']:
+        """Find critical sectors for floors in a project."""
+        query = """
+            SELECT cs.*, f.name as floor_name, u.full_name as created_by_name
+            FROM critical_sectors cs
+            LEFT JOIN floors f ON cs.floor_id = f.id
+            LEFT JOIN users u ON cs.created_by = u.id
+            WHERE f.project_id = ?
+        """
+        params = [project_id]
+        if active_only:
+            query += " AND cs.is_active = 1"
+        query += " ORDER BY cs.floor_id, cs.created_at DESC"
+        sectors_data = execute_query(query, tuple(params))
+        return [cls._from_db_row(row) for row in sectors_data]
+
+    @classmethod
     def find_all_active(cls) -> List['CriticalSector']:
         """Get all active critical sectors."""
         sectors_data = execute_query(
@@ -225,6 +242,14 @@ class CriticalSector:
             )
             return rows_affected > 0
         return False
+
+    @classmethod
+    def delete_by_floor_id(cls, floor_id: int) -> int:
+        """Delete all critical sectors for a floor. Returns rows affected."""
+        return delete_record(
+            "DELETE FROM critical_sectors WHERE floor_id = ?",
+            (floor_id,)
+        )
 
     def contains_point(self, x: float, y: float) -> bool:
         """Check if this critical sector contains the given point."""

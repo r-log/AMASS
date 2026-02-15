@@ -26,6 +26,7 @@
     <script src="core/api/floors.service.js"></script>
     <script src="core/api/workLogs.service.js"></script>
     <script src="core/api/criticalSectors.service.js"></script>
+    <script src="core/api/projects.service.js"></script>
 
     <!-- Utilities -->
     <script src="core/utils/date.utils.js"></script>
@@ -524,9 +525,9 @@
 
             <!-- Logo -->
             <div class="flex items-center">
-                <img src="../assets/Logo.png" alt="Electrician Work Log System"
+                <img src="assets/Logo.png" alt="Electrician Work Log System"
                     class="theme-logo theme-logo-dark top-bar-logo">
-                <img src="../assets/Logo (light).png" alt="Electrician Work Log System"
+                <img src="assets/Logo (light).png" alt="Electrician Work Log System"
                     class="theme-logo theme-logo-light top-bar-logo">
             </div>
 
@@ -605,6 +606,9 @@
 
                 <!-- Tabs -->
                 <div class="tab-container">
+                    <button class="tab-btn" :class="{ active: activeTab === 'projects' }" @click="activeTab = 'projects'">
+                        📁 Projects
+                    </button>
                     <button class="tab-btn" :class="{ active: activeTab === 'workers' }" @click="activeTab = 'workers'">
                         👷 Workers
                     </button>
@@ -619,6 +623,77 @@
                         @click="activeTab = 'notifications'">
                         🔔 Notifications
                     </button>
+                </div>
+
+                <!-- Projects Tab -->
+                <div v-if="activeTab === 'projects'">
+                    <div class="dashboard-card">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h2 style="font-size: 20px; font-weight: 700; color: #ffd700;">Project Management</h2>
+                            <button @click="showCreateProject = true; newProject = { name: '', description: '' }"
+                                class="btn-primary">
+                                ➕ Create Project
+                            </button>
+                        </div>
+
+                        <div v-if="projects.length === 0"
+                            style="text-align: center; padding: 40px; color: #9ca3af;">
+                            <p style="font-size: 48px; margin-bottom: 12px;">📁</p>
+                            <p>No projects yet. Create one to get started.</p>
+                        </div>
+
+                        <div v-else style="display: grid; gap: 12px;">
+                            <div v-for="project in projects" :key="project.id"
+                                style="background: rgba(0, 0, 0, 0.3); border-left: 3px solid #ffd700; border-radius: 8px; padding: 16px;">
+                                <div
+                                    style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                                    <div style="flex: 1;">
+                                        <div style="font-weight: 600; color: #ffffff; margin-bottom: 4px;">
+                                            {{ project.name }}
+                                        </div>
+                                        <div style="color: #9ca3af; font-size: 14px;">
+                                            {{ project.description || 'No description' }}
+                                        </div>
+                                    </div>
+                                    <button @click="openDeleteProjectModal(project)"
+                                        style="background: rgba(239, 68, 68, 0.3); border: 1px solid #ef4444; color: #ef4444; padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;"
+                                        title="Delete project">🗑️ Delete</button>
+                                </div>
+                                <div style="margin-top: 12px;">
+                                    <div style="font-size: 13px; color: #ffd700; margin-bottom: 8px;">Assigned workers</div>
+                                    <div v-if="!(projectWorkers[project.id]?.length)" style="color: #6b7280; font-size: 13px;">
+                                        No workers assigned
+                                    </div>
+                                    <div v-else style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
+                                        <span v-for="w in projectWorkers[project.id]" :key="w.user_id"
+                                            style="background: rgba(16, 185, 129, 0.2); padding: 4px 10px; border-radius: 12px; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                                            {{ w.full_name }}
+                                            <button @click="unassignWorker(project.id, w.user_id)"
+                                                style="background: none; border: none; color: #ef4444; cursor: pointer; padding: 0; font-size: 14px;">×</button>
+                                        </span>
+                                    </div>
+                                    <button @click="openAssignModal(project)" class="btn-secondary" style="padding: 6px 14px; font-size: 13px;">
+                                        ➕ Assign Worker
+                                    </button>
+                                </div>
+                                <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.1);">
+                                    <div style="font-size: 13px; color: #ffd700; margin-bottom: 8px;">Floors</div>
+                                    <div v-if="!(projectFloors[project.id]?.length)" style="color: #6b7280; font-size: 13px;">
+                                        No floors yet
+                                    </div>
+                                    <ul v-else style="list-style: none; margin: 0; padding: 0; font-size: 13px; margin-bottom: 8px;">
+                                        <li v-for="f in projectFloors[project.id]" :key="f.id" style="padding: 4px 0;">
+                                            {{ f.name }} <span v-if="f.image_path === 'placeholder.pdf'" style="color: #f59e0b;">(no plan)</span>
+                                        </li>
+                                    </ul>
+                                    <button @click="openAddFloorModal(project)" class="btn-secondary" style="padding: 6px 14px; font-size: 13px;">
+                                        ➕ Add Floor
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Workers Tab -->
@@ -790,6 +865,108 @@
                 </div>
             </div>
 
+            <!-- Delete Project Confirmation Modal -->
+            <div v-if="showDeleteProject" class="modal-overlay" @click.self="showDeleteProject = false">
+                <div class="modal-content">
+                    <h2 style="font-size: 24px; font-weight: 700; color: #ef4444; margin-bottom: 16px;">
+                        Delete Project
+                    </h2>
+                    <p v-if="projectToDelete" style="color: #e5e7eb; margin-bottom: 20px;">
+                        Delete project <strong>{{ projectToDelete.name }}</strong>? All floors, work logs, sectors, and assignments will be permanently removed.
+                        A compressed backup will be created and can be restored later. This action cannot be undone.
+                    </p>
+                    <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
+                        <button type="button" @click="showDeleteProject = false" class="btn-secondary">Cancel</button>
+                        <button @click="confirmDeleteProject" :disabled="deleteProjectSubmitting"
+                            style="background: #ef4444; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                            {{ deleteProjectSubmitting ? 'Deleting...' : 'Delete Project' }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Create Project Modal -->
+            <div v-if="showCreateProject" class="modal-overlay" @click.self="showCreateProject = false">
+                <div class="modal-content">
+                    <h2 style="font-size: 24px; font-weight: 700; color: #ffd700; margin-bottom: 24px;">
+                        Create Project
+                    </h2>
+                    <form @submit.prevent="submitCreateProject">
+                        <div class="form-group">
+                            <label class="form-label">Project Name</label>
+                            <input type="text" v-model="newProject.name" class="form-input" required
+                                placeholder="e.g., Building A Renovation">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Description</label>
+                            <textarea v-model="newProject.description" rows="3" class="form-textarea"
+                                placeholder="Optional project description"></textarea>
+                        </div>
+                        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
+                            <button type="button" @click="showCreateProject = false" class="btn-secondary">Cancel</button>
+                            <button type="submit" class="btn-primary">Create</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Assign Worker Modal -->
+            <div v-if="showAssignWorker" class="modal-overlay" @click.self="showAssignWorker = false">
+                <div class="modal-content">
+                    <h2 style="font-size: 24px; font-weight: 700; color: #ffd700; margin-bottom: 24px;">
+                        Assign Worker to {{ selectedProjectForAssign?.name || 'Project' }}
+                    </h2>
+                    <form @submit.prevent="submitAssignWorker">
+                        <div class="form-group">
+                            <label class="form-label">Worker</label>
+                            <select v-model="workerToAssign" class="form-select" required>
+                                <option value="">Select worker</option>
+                                <option v-for="w in availableWorkersForAssign" :key="w.id" :value="w.id">
+                                    {{ w.full_name }} ({{ w.username }})
+                                </option>
+                            </select>
+                        </div>
+                        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
+                            <button type="button" @click="showAssignWorker = false" class="btn-secondary">Cancel</button>
+                            <button type="submit" class="btn-primary">Assign</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Add Floor Modal -->
+            <div v-if="showCreateFloor" class="modal-overlay" @click.self="showCreateFloor = false">
+                <div class="modal-content">
+                    <h2 style="font-size: 24px; font-weight: 700; color: #ffd700; margin-bottom: 24px;">
+                        Add Floor to {{ selectedProjectForFloor?.name || 'Project' }}
+                    </h2>
+                    <form @submit.prevent="submitCreateFloor">
+                        <div class="form-group" v-if="selectedProjectForFloor">
+                            <div style="color: #9ca3af; font-size: 14px;">
+                                Will be named: <strong style="color: #ffd700;">{{ nextFloorName }}</strong>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Floor Plan (PDF/PNG/JPG)</label>
+                            <input type="file" ref="floorFileInput" @change="onFloorFileSelect" accept=".pdf,.png,.jpg,.jpeg" class="form-input"
+                                style="padding: 8px;">
+                            <div v-if="newFloor.fileName" style="color: #10b981; font-size: 13px; margin-top: 4px;">
+                                {{ newFloor.fileName }} <span style="color: #9ca3af;">(upload required for tile generation)</span>
+                            </div>
+                            <div v-else style="color: #f59e0b; font-size: 12px; margin-top: 4px;">
+                                No file selected – floor will be created with placeholder. Upload later to generate map tiles.
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
+                            <button type="button" @click="showCreateFloor = false" class="btn-secondary">Cancel</button>
+                            <button type="submit" class="btn-primary" :disabled="createFloorSubmitting">
+                                {{ createFloorSubmitting ? 'Creating...' : 'Add Floor' }}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
             <!-- Create Critical Sector Modal -->
             <div v-if="showCreateSector" class="modal-overlay" @click.self="showCreateSector = false">
                 <div class="modal-content">
@@ -920,6 +1097,21 @@
                     allAssignments: [],
                     notifications: [],
                     floors: [],
+                    projects: [],
+                    projectWorkers: {},
+                    showCreateProject: false,
+                    newProject: { name: '', description: '' },
+                    showDeleteProject: false,
+                    projectToDelete: null,
+                    deleteProjectSubmitting: false,
+                    showAssignWorker: false,
+                    selectedProjectForAssign: null,
+                    workerToAssign: '',
+                    projectFloors: {},
+                    showCreateFloor: false,
+                    selectedProjectForFloor: null,
+                    newFloor: { file: null, fileName: '' },
+                    createFloorSubmitting: false,
                     showCreateSector: false,
                     showCreateAssignment: false,
                     newSector: {
@@ -937,6 +1129,22 @@
                         due_date: ''
                     }
                 };
+            },
+            computed: {
+                availableWorkersForAssign() {
+                    if (!this.selectedProjectForAssign) return [];
+                    const assignedIds = (this.projectWorkers[this.selectedProjectForAssign.id] || [])
+                        .map((w) => w.user_id);
+                    return this.workers.filter((w) => !assignedIds.includes(w.id));
+                },
+                nextFloorName() {
+                    if (!this.selectedProjectForFloor) return 'Ground Floor';
+                    const count = (this.projectFloors[this.selectedProjectForFloor.id] || []).length;
+                    if (count === 0) return 'Ground Floor';
+                    const n = count;
+                    const suffix = (n % 100 >= 11 && n % 100 <= 13) ? 'th' : { 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th';
+                    return `${n}${suffix} Floor`;
+                }
             },
             async mounted() {
                 await this.checkAuth();
@@ -969,16 +1177,19 @@
                 async loadData() {
                     await Promise.all([
                         this.loadStats(),
+                        this.loadProjects(),
                         this.loadWorkers(),
                         this.loadCriticalSectors(),
                         this.loadAssignments(),
                         this.loadNotifications(),
                         this.loadFloors()
                     ]);
+                    await this.loadAllProjectWorkers();
+                    await this.loadAllProjectFloors();
                 },
                 async loadStats() {
                     try {
-                        const response = await fetchWithAuth('http://localhost:5000/api/dashboard/supervisor');
+                        const response = await fetchWithAuth(`${API_BASE}/dashboard/supervisor`);
                         const data = await response.json();
 
                         this.stats.activeWorkers = data.active_workers_today || 0;
@@ -991,11 +1202,11 @@
                 },
                 async loadWorkers() {
                     try {
-                        const response = await fetchWithAuth('http://localhost:5000/api/users?role=worker');
+                        const response = await fetchWithAuth(`${API_BASE}/auth/users?role=worker`);
                         const allWorkers = await response.json();
 
                         // Get work logs for today to show activity
-                        const logsResponse = await fetchWithAuth('http://localhost:5000/api/logs');
+                        const logsResponse = await fetchWithAuth(`${API_BASE}/work-logs`);
                         const logs = await logsResponse.json();
                         const today = new Date().toISOString().split('T')[0];
 
@@ -1020,7 +1231,7 @@
                 },
                 async loadCriticalSectors() {
                     try {
-                        const response = await fetchWithAuth('http://localhost:5000/api/critical-sectors');
+                        const response = await fetchWithAuth(`${API_BASE}/critical-sectors`);
                         this.criticalSectors = await response.json();
                     } catch (error) {
                         console.error('Error loading critical sectors:', error);
@@ -1028,7 +1239,7 @@
                 },
                 async loadAssignments() {
                     try {
-                        const response = await fetchWithAuth('http://localhost:5000/api/assignments');
+                        const response = await fetchWithAuth(`${API_BASE}/assignments`);
                         this.allAssignments = await response.json();
                     } catch (error) {
                         console.error('Error loading assignments:', error);
@@ -1044,15 +1255,182 @@
                 },
                 async loadFloors() {
                     try {
-                        const response = await fetch('http://localhost:5000/api/floors');
+                        const response = await fetchWithAuth(`${API_BASE}/floors`);
                         this.floors = await response.json();
                     } catch (error) {
                         console.error('Error loading floors:', error);
                     }
                 },
+                async loadProjects() {
+                    try {
+                        const response = await fetchWithAuth(`${API_BASE}/projects`);
+                        this.projects = response.ok ? await response.json() : [];
+                    } catch (error) {
+                        console.error('Error loading projects:', error);
+                    }
+                },
+                async loadAllProjectWorkers() {
+                    this.projectWorkers = {};
+                    for (const p of this.projects) {
+                        try {
+                            const response = await fetchWithAuth(`${API_BASE}/projects/${p.id}/workers`);
+                            this.projectWorkers[p.id] = response.ok ? await response.json() : [];
+                        } catch (e) {
+                            this.projectWorkers[p.id] = [];
+                        }
+                    }
+                },
+                async loadAllProjectFloors() {
+                    this.projectFloors = {};
+                    for (const p of this.projects) {
+                        try {
+                            const response = await fetchWithAuth(`${API_BASE}/floors?project_id=${p.id}`);
+                            this.projectFloors[p.id] = response.ok ? await response.json() : [];
+                        } catch (e) {
+                            this.projectFloors[p.id] = [];
+                        }
+                    }
+                },
+                async submitCreateProject() {
+                    try {
+                        const response = await fetchWithAuth(`${API_BASE}/projects`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.newProject)
+                        });
+                        if (response.ok) {
+                            this.showCreateProject = false;
+                            this.newProject = { name: '', description: '' };
+                            await this.loadData();
+                        } else {
+                            const err = await response.json();
+                            alert(err.error || 'Failed to create project');
+                        }
+                    } catch (error) {
+                        console.error('Error creating project:', error);
+                        alert('Failed to create project');
+                    }
+                },
+                openAssignModal(project) {
+                    this.selectedProjectForAssign = project;
+                    this.workerToAssign = '';
+                    this.showAssignWorker = true;
+                },
+                openDeleteProjectModal(project) {
+                    this.projectToDelete = project;
+                    this.showDeleteProject = true;
+                },
+                async confirmDeleteProject() {
+                    if (!this.projectToDelete) return;
+                    this.deleteProjectSubmitting = true;
+                    try {
+                        const response = await fetchWithAuth(
+                            `${API_BASE}/projects/${this.projectToDelete.id}`,
+                            { method: 'DELETE' }
+                        );
+                        const data = await response.json();
+                        if (response.ok) {
+                            this.projects = this.projects.filter((p) => p.id !== this.projectToDelete.id);
+                            delete this.projectWorkers[this.projectToDelete.id];
+                            delete this.projectFloors[this.projectToDelete.id];
+                            this.showDeleteProject = false;
+                            this.projectToDelete = null;
+                            alert(`Project deleted. Backup saved: ${data.backup_path || 'see server'}`);
+                        } else {
+                            alert(data.error || 'Failed to delete project');
+                        }
+                    } catch (error) {
+                        console.error('Error deleting project:', error);
+                        alert('Failed to delete project');
+                    } finally {
+                        this.deleteProjectSubmitting = false;
+                    }
+                },
+                openAddFloorModal(project) {
+                    this.selectedProjectForFloor = project;
+                    this.newFloor = { file: null, fileName: '' };
+                    this.showCreateFloor = true;
+                    this.$nextTick(() => {
+                        const input = this.$refs.floorFileInput;
+                        if (input) input.value = '';
+                    });
+                },
+                onFloorFileSelect(event) {
+                    const file = event.target.files?.[0];
+                    this.newFloor.file = file || null;
+                    this.newFloor.fileName = file ? file.name : '';
+                },
+                async submitCreateFloor() {
+                    if (!this.selectedProjectForFloor) return;
+                    this.createFloorSubmitting = true;
+                    try {
+                        const formData = new FormData();
+                        formData.append('project_id', this.selectedProjectForFloor.id);
+                        if (this.newFloor.file) formData.append('file', this.newFloor.file);
+                        const response = await fetch(`${API_BASE}/floors`, {
+                            method: 'POST',
+                            headers: { Authorization: `Bearer ${authManager.getToken()}` },
+                            body: formData
+                        });
+                        if (!response.ok) {
+                            const err = await response.json();
+                            throw new Error(err.error || 'Failed to create floor');
+                        }
+                        const result = await response.json();
+                        alert(result.tiles_generating
+                            ? 'Floor created! Tiles are generating in the background. The map will be ready shortly.'
+                            : 'Floor created. Add a floor plan later to generate map tiles.');
+                        this.showCreateFloor = false;
+                        this.selectedProjectForFloor = null;
+                        this.newFloor = { file: null, fileName: '' };
+                        await this.loadFloors();
+                        await this.loadAllProjectFloors();
+                    } catch (error) {
+                        alert(error.message || 'Failed to create floor');
+                    } finally {
+                        this.createFloorSubmitting = false;
+                    }
+                },
+                async submitAssignWorker() {
+                    if (!this.selectedProjectForAssign || !this.workerToAssign) return;
+                    try {
+                        const response = await fetchWithAuth(
+                            `${API_BASE}/projects/${this.selectedProjectForAssign.id}/assign`,
+                            { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ user_id: parseInt(this.workerToAssign, 10) }) }
+                        );
+                        if (response.ok) {
+                            this.showAssignWorker = false;
+                            this.selectedProjectForAssign = null;
+                            await this.loadAllProjectWorkers();
+                        } else {
+                            const err = await response.json();
+                            alert(err.error || 'Failed to assign worker');
+                        }
+                    } catch (error) {
+                        console.error('Error assigning worker:', error);
+                        alert('Failed to assign worker');
+                    }
+                },
+                async unassignWorker(projectId, userId) {
+                    if (!confirm('Unassign this worker from the project?')) return;
+                    try {
+                        const response = await fetchWithAuth(
+                            `${API_BASE}/projects/${projectId}/assign/${userId}`,
+                            { method: 'DELETE' }
+                        );
+                        if (response.ok) {
+                            await this.loadAllProjectWorkers();
+                        } else {
+                            alert('Failed to unassign worker');
+                        }
+                    } catch (error) {
+                        console.error('Error unassigning worker:', error);
+                        alert('Failed to unassign worker');
+                    }
+                },
                 async submitCreateSector() {
                     try {
-                        const response = await fetchWithAuth('http://localhost:5000/api/critical-sectors', {
+                        const response = await fetchWithAuth(`${API_BASE}/critical-sectors`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(this.newSector)
@@ -1084,7 +1462,7 @@
                     }
 
                     try {
-                        const response = await fetchWithAuth(`http://localhost:5000/api/critical-sectors/${sectorId}`, {
+                        const response = await fetchWithAuth(`${API_BASE}/critical-sectors/${sectorId}`, {
                             method: 'DELETE'
                         });
 
@@ -1101,7 +1479,7 @@
                 },
                 async submitCreateAssignment() {
                     try {
-                        const response = await fetchWithAuth('http://localhost:5000/api/assignments', {
+                        const response = await fetchWithAuth(`${API_BASE}/assignments`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify(this.newAssignment)
@@ -1127,7 +1505,7 @@
                 },
                 async markAsRead(notifId) {
                     try {
-                        await fetchWithAuth(`http://localhost:5000/api/notifications/${notifId}/read`, {
+                        await fetchWithAuth(`${API_BASE}/notifications/${notifId}/read`, {
                             method: 'PUT'
                         });
                         await this.loadNotifications();
@@ -1138,7 +1516,7 @@
                 },
                 async markAllAsRead() {
                     try {
-                        await fetchWithAuth('http://localhost:5000/api/notifications/read-all', {
+                        await fetchWithAuth(`${API_BASE}/notifications/read-all`, {
                             method: 'PUT'
                         });
                         await this.loadNotifications();

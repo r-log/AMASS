@@ -200,6 +200,8 @@ class WorkLogService:
             # Handle different filter types
             if 'floor_id' in filters:
                 return WorkLog.find_by_floor_id(filters['floor_id'], limit)
+            elif 'project_id' in filters:
+                return WorkLog.find_by_project_id(filters['project_id'], limit, offset)
             elif 'worker_id' in filters:
                 return WorkLog.find_by_worker_id(filters['worker_id'], limit)
             elif 'start_date' in filters and 'end_date' in filters:

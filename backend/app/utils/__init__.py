@@ -2,7 +2,7 @@
 Utility functions and decorators for the Electrician Log MVP application.
 """
 
-from .decorators import token_required, admin_required, supervisor_or_admin_required
+from .decorators import token_required, admin_required, supervisor_required, supervisor_or_admin_required
 from .validators import (
     validate_coordinates,
     validate_date_format,
@@ -27,6 +27,7 @@ __all__ = [
     # Decorators
     'token_required',
     'admin_required',
+    'supervisor_required',
     'supervisor_or_admin_required',
     # Validators
     'validate_coordinates',

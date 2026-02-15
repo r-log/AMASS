@@ -135,6 +135,30 @@ class Assignment:
         return [cls._from_db_row(row) for row in assignments_data]
 
     @classmethod
+    def find_by_project_id(cls, project_id: int, limit: Optional[int] = None) -> List['Assignment']:
+        """Find assignments for work logs on floors in a project (excludes assignments without work_log)."""
+        query = """
+            SELECT wa.*,
+                   wl.work_type, wl.description as work_description, wl.floor_id,
+                   f.name as floor_name,
+                   u1.full_name as assigned_to_name,
+                   u2.full_name as assigned_by_name
+            FROM work_assignments wa
+            INNER JOIN work_logs wl ON wa.work_log_id = wl.id
+            INNER JOIN floors f ON wl.floor_id = f.id
+            LEFT JOIN users u1 ON wa.assigned_to = u1.id
+            LEFT JOIN users u2 ON wa.assigned_by = u2.id
+            WHERE f.project_id = ?
+            ORDER BY wa.due_date ASC, wa.created_at DESC
+        """
+        params = (project_id,)
+        if limit:
+            query += " LIMIT ?"
+            params = (project_id, limit)
+        assignments_data = execute_query(query, params)
+        return [cls._from_db_row(row) for row in assignments_data]
+
+    @classmethod
     def find_all(cls, limit: Optional[int] = None) -> List['Assignment']:
         """Get all assignments with optional limit."""
         query = """
@@ -283,6 +307,14 @@ class Assignment:
             )
             return rows_affected > 0
         return False
+
+    @classmethod
+    def delete_by_work_log_id(cls, work_log_id: int) -> int:
+        """Delete all assignments for a work log. Returns rows affected."""
+        return delete_record(
+            "DELETE FROM work_assignments WHERE work_log_id = ?",
+            (work_log_id,)
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert assignment to dictionary representation."""

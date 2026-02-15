@@ -10,10 +10,10 @@ from datetime import datetime
 from pathlib import Path
 from flask import current_app
 
-from app.database.connection import get_db, table_exists
+from app.database.connection import get_db, table_exists, add_column_if_not_exists
 from app.models import (
-    User, Floor, WorkLog, CriticalSector, Assignment,
-    Notification, CableRoute, WorkTemplate
+    User, Floor, Project, ProjectUserAssignment, WorkLog, CriticalSector,
+    Assignment, Notification, CableRoute, WorkTemplate
 )
 
 
@@ -77,9 +77,11 @@ def initialize_database() -> None:
     """Initialize the database with all tables and default data."""
     print("Initializing database...")
 
-    # Create tables in dependency order
+    # Create tables in dependency order (projects before floors)
     tables_to_create = [
         ('users', User),
+        ('projects', Project),
+        ('project_user_assignments', ProjectUserAssignment),
         ('floors', Floor),
         ('work_logs', WorkLog),
         ('critical_sectors', CriticalSector),
@@ -115,31 +117,54 @@ def seed_default_data() -> None:
     print("Seeding default data...")
 
     try:
+        # Add default project if none exist
+        projects = Project.find_all()
+        default_project_id = None
+        if not projects:
+            print("Adding default project...")
+            default_project = Project(
+                name='Default Project',
+                description='Default project for initial setup',
+                is_active=True
+            )
+            default_project.save()
+            default_project_id = default_project.id
+            print(f"Added default project (id={default_project_id})")
+        else:
+            default_project_id = projects[0].id
+
         # Add default floors if none exist
         floors = Floor.find_all()
-        if not floors:
+        if not floors and default_project_id:
             print("Adding default floors...")
             default_floors = [
-                Floor(name='Ground Floor', image_path='floor-1.pdf',
-                      width=1920, height=1080),
-                Floor(name='1st Floor', image_path='floor-2.pdf',
-                      width=1920, height=1080),
-                Floor(name='2nd Floor', image_path='floor-3.pdf',
-                      width=1920, height=1080),
-                Floor(name='3rd Floor', image_path='floor-4.pdf',
-                      width=1920, height=1080),
-                Floor(name='4th Floor', image_path='floor-5.pdf',
-                      width=1920, height=1080),
-                Floor(name='5th Floor', image_path='floor-6.pdf',
-                      width=1920, height=1080),
-                Floor(name='6th Floor', image_path='ZK-450.01-GR-E1X-Mp07-SW.pdf',
-                      width=1920, height=1080),
+                Floor(project_id=default_project_id, name='Ground Floor', image_path='floor-1.pdf',
+                      width=1920, height=1080, sort_order=0),
+                Floor(project_id=default_project_id, name='1st Floor', image_path='floor-2.pdf',
+                      width=1920, height=1080, sort_order=1),
+                Floor(project_id=default_project_id, name='2nd Floor', image_path='floor-3.pdf',
+                      width=1920, height=1080, sort_order=2),
+                Floor(project_id=default_project_id, name='3rd Floor', image_path='floor-4.pdf',
+                      width=1920, height=1080, sort_order=3),
+                Floor(project_id=default_project_id, name='4th Floor', image_path='floor-5.pdf',
+                      width=1920, height=1080, sort_order=4),
+                Floor(project_id=default_project_id, name='5th Floor', image_path='floor-6.pdf',
+                      width=1920, height=1080, sort_order=5),
+                Floor(project_id=default_project_id, name='6th Floor', image_path='ZK-450.01-GR-E1X-Mp07-SW.pdf',
+                      width=1920, height=1080, sort_order=6),
             ]
 
             for floor in default_floors:
                 floor.save()
 
             print(f"Added {len(default_floors)} default floors")
+
+            # Assign all workers to default project
+            workers = User.find_by_role('worker')
+            for worker in workers:
+                ProjectUserAssignment.assign(default_project_id, worker.id)
+            if workers:
+                print(f"Assigned {len(workers)} workers to default project")
 
         # Add default work templates if none exist
         templates = WorkTemplate.find_all_active()
@@ -295,6 +320,66 @@ def migrate_add_indexes() -> None:
     print("Migration completed: Add database indexes")
 
 
+def migrate_add_projects() -> None:
+    """Migration to add projects, project_user_assignments, and project_id on floors."""
+    print("Running migration: Add projects and project assignments...")
+
+    db = get_db()
+
+    # 1. Create projects table
+    if not table_exists('projects'):
+        print("Creating projects table")
+        db.execute(Project.create_table())
+        db.commit()
+
+    # 2. Create project_user_assignments table
+    if not table_exists('project_user_assignments'):
+        print("Creating project_user_assignments table")
+        db.execute(ProjectUserAssignment.create_table())
+        db.commit()
+
+    # 3. Add project_id and sort_order to floors
+    add_column_if_not_exists('floors', 'project_id INTEGER')
+    add_column_if_not_exists('floors', 'sort_order INTEGER DEFAULT 0')
+
+    # 4. Create default project if no projects exist
+    cursor = db.execute("SELECT COUNT(*) as count FROM projects")
+    count = cursor.fetchone()['count']
+    if count == 0:
+        print("Creating default project")
+        default_project = Project(
+            name='Default Project',
+            description='Migration default - all existing floors assigned here',
+            is_active=True
+        )
+        default_project.save()
+        default_project_id = default_project.id
+
+        # 5. Assign all existing floors to default project
+        db.execute("UPDATE floors SET project_id = ? WHERE project_id IS NULL", (default_project_id,))
+        db.commit()
+        print(f"Assigned floors to default project (id={default_project_id})")
+
+        # 6. Assign all workers to default project
+        workers = User.find_by_role('worker')
+        for worker in workers:
+            try:
+                ProjectUserAssignment.assign(default_project_id, worker.id, assigned_by=None)
+            except Exception as e:
+                print(f"Warning: Could not assign worker {worker.id} to project: {e}")
+        print(f"Assigned {len(workers)} workers to default project")
+    else:
+        # Backfill floors that have no project_id
+        cursor = db.execute("SELECT id FROM projects WHERE is_active = 1 LIMIT 1")
+        row = cursor.fetchone()
+        if row:
+            default_project_id = row['id']
+            db.execute("UPDATE floors SET project_id = ? WHERE project_id IS NULL", (default_project_id,))
+            db.commit()
+
+    print("Migration completed: Add projects")
+
+
 def run_migrations() -> None:
     """Run all necessary database migrations."""
     print("Starting database migrations...")
@@ -313,6 +398,7 @@ def run_migrations() -> None:
         (2, "Add missing columns", migrate_add_missing_columns),
         (3, "Update foreign keys", migrate_update_foreign_keys),
         (4, "Add database indexes", migrate_add_indexes),
+        (5, "Add projects and project assignments", migrate_add_projects),
     ]
 
     for version, name, migration_func in migrations:

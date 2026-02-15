@@ -149,7 +149,8 @@ def get_table_columns(table_name: str) -> list:
     """Get column information for a table."""
     db = get_db()
     cursor = db.execute(f"PRAGMA table_info({table_name})")
-    return [column[1] for column in cursor.fetchall()]
+    rows = cursor.fetchall()
+    return [row['name'] if isinstance(row, dict) else row[1] for row in rows]
 
 
 def add_column_if_not_exists(table_name: str, column_definition: str):

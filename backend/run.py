@@ -20,6 +20,7 @@ def main():
         overlap=app.config.get('TILE_OVERLAP', 1),
         dpi=app.config.get('TILE_DPI', 300)
     )
+    app.config['TILE_GENERATOR'] = app.tile_generator
 
     print("=" * 60)
     print("🏗️  Electrician Log MVP - Refactored Architecture")

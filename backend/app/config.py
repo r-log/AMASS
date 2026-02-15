@@ -23,6 +23,7 @@ class Config:
 
     # Tile generation settings
     TILES_DIR = os.environ.get('TILES_DIR') or 'tiles'
+    TILES_DIRECTORY = os.environ.get('TILES_DIRECTORY') or str(BASE_DIR / 'tiles')
     TILE_SIZE = int(os.environ.get('TILE_SIZE', '512'))
     TILE_OVERLAP = int(os.environ.get('TILE_OVERLAP', '1'))
     TILE_DPI = int(os.environ.get('TILE_DPI', '300'))
@@ -30,6 +31,10 @@ class Config:
     # Floor plans directory
     FLOOR_PLANS_DIR = os.environ.get('FLOOR_PLANS_DIR') or str(
         BASE_DIR.parent / 'floor-plans')
+
+    # Project backup directory (compressed backups before delete)
+    PROJECT_BACKUPS_DIR = os.environ.get('PROJECT_BACKUPS_DIR') or str(
+        BASE_DIR.parent / 'project-backups')
 
     # JWT settings
     JWT_EXPIRATION_HOURS = int(os.environ.get('JWT_EXPIRATION_HOURS', '24'))

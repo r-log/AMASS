@@ -9,19 +9,41 @@ from app.models.floor import Floor
 from app.models.work_log import WorkLog
 from app.models.critical_sector import CriticalSector
 from app.models.user import User
+from app.models.project_user_assignment import ProjectUserAssignment
+
+
+def _floor_name_for_index(index: int) -> str:
+    """Return standard floor name: Ground Floor, 1st Floor, 2nd Floor, etc."""
+    if index == 0:
+        return "Ground Floor"
+    n = index  # index 1 -> 1st Floor, index 2 -> 2nd Floor
+    if 11 <= n % 100 <= 13:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix} Floor"
 
 
 class FloorService:
     """Service for managing floors and floor-related operations."""
 
     @staticmethod
-    def get_all_floors(active_only: bool = True) -> List[Floor]:
-        """Get all floors with optional active filtering."""
+    def get_all_floors(
+        active_only: bool = True,
+        project_id: Optional[int] = None,
+        user_id: Optional[int] = None,
+        role: Optional[str] = None
+    ) -> List[Floor]:
+        """Get floors. Workers must pass project_id and be assigned to that project."""
         try:
+            if role == 'worker':
+                if project_id is None or not user_id:
+                    return []
+                if not ProjectUserAssignment.is_user_assigned(project_id, user_id):
+                    return []
             if active_only:
-                return Floor.find_all_active()
-            else:
-                return Floor.find_all()
+                return Floor.find_all_active(project_id)
+            return Floor.find_all(project_id)
         except Exception as e:
             print(f"Error getting floors: {e}")
             return []
@@ -44,28 +66,29 @@ class FloorService:
             Tuple of (success, floor_object, message)
         """
         try:
-            # Check permissions
             user = User.find_by_id(user_id)
-            if not user or not user.can_manage_users():  # Only admins can create floors
-                return False, None, "Insufficient permissions to create floors"
+            if not user or user.role != 'supervisor':
+                return False, None, "Supervisor permissions required to create floors"
 
-            # Validate required fields
-            required_fields = ['name', 'image_path']
-            for field in required_fields:
-                if field not in data or not data[field]:
-                    return False, None, f"Missing required field: {field}"
+            if 'project_id' not in data or data['project_id'] is None:
+                return False, None, "Missing required field: project_id"
 
-            # Create floor
+            project_id = data['project_id']
+            existing_floors = Floor.find_all(project_id=project_id)
+            floor_index = len(existing_floors)
+            name = data.get('name', '').strip() or _floor_name_for_index(floor_index)
+            image_path = data.get('image_path') or 'placeholder.pdf'
+
             floor = Floor(
-                name=data['name'],
-                image_path=data['image_path'],
+                project_id=project_id,
+                name=name,
+                image_path=image_path,
                 width=data.get('width', 1920),
                 height=data.get('height', 1080),
+                sort_order=data.get('sort_order', floor_index),
                 is_active=True
             )
-
             floor.save()
-
             return True, floor, "Floor created successfully"
 
         except Exception as e:
@@ -80,22 +103,20 @@ class FloorService:
             Tuple of (success, floor_object, message)
         """
         try:
-            # Check permissions
             user = User.find_by_id(user_id)
-            if not user or not user.can_manage_users():
-                return False, None, "Insufficient permissions to update floors"
+            if not user or user.role != 'supervisor':
+                return False, None, "Supervisor permissions required to update floors"
 
             floor = Floor.find_by_id(floor_id)
             if not floor:
                 return False, None, "Floor not found"
 
             # Update fields
-            updateable_fields = ['name', 'image_path',
-                                 'width', 'height', 'is_active']
+            updateable_fields = ['name', 'image_path', 'project_id',
+                                'width', 'height', 'sort_order', 'is_active']
             for field in updateable_fields:
                 if field in data:
-                    if field in ['width', 'height']:
-                        # Handle numeric fields
+                    if field in ['width', 'height', 'sort_order', 'project_id']:
                         if data[field] is not None:
                             setattr(floor, field, int(data[field]))
                     else:
@@ -117,10 +138,9 @@ class FloorService:
             Tuple of (success, message)
         """
         try:
-            # Check permissions
             user = User.find_by_id(user_id)
-            if not user or not user.can_manage_users():
-                return False, "Insufficient permissions to delete floors"
+            if not user or user.role != 'supervisor':
+                return False, "Supervisor permissions required to delete floors"
 
             floor = Floor.find_by_id(floor_id)
             if not floor:
@@ -379,8 +399,8 @@ class FloorService:
         """
         try:
             user = User.find_by_id(user_id)
-            if not user or not user.can_manage_users():
-                return False, "Insufficient permissions for bulk updates"
+            if not user or user.role != 'supervisor':
+                return False, "Supervisor permissions required for bulk updates"
 
             updated_count = 0
             errors = []

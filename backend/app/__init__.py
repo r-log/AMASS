@@ -2,11 +2,15 @@
 Flask application factory for the Electrician Log MVP.
 """
 
-from flask import Flask
+from pathlib import Path
+
+from flask import Flask, send_from_directory
 from flask_cors import CORS
 
 from app.config import get_config
 from app.database.connection import init_db_commands
+
+FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / 'frontend'
 
 
 def create_app(config_name: str = None) -> Flask:
@@ -44,7 +48,34 @@ def create_app(config_name: str = None) -> Flask:
     # Register error handlers
     register_error_handlers(app)
 
+    # Serve frontend (HTML, JS, CSS, assets) so everything works on port 5000
+    _add_frontend_routes(app)
+
     return app
+
+
+def _add_frontend_routes(app: Flask) -> None:
+    """Serve frontend static files so the app works at localhost:5000."""
+
+    @app.route('/')
+    def index():
+        return send_from_directory(FRONTEND_DIR, 'login.html')
+
+    @app.route('/<path:filename>')
+    def serve_frontend(filename):
+        if filename.startswith('api/'):
+            from flask import abort
+            abort(404)
+        if '..' in filename or filename.startswith('/'):
+            from flask import abort
+            abort(404)
+        path = Path(FRONTEND_DIR) / filename
+        if path.is_file():
+            return send_from_directory(FRONTEND_DIR, filename)
+        if not path.suffix and (FRONTEND_DIR / 'index.html').exists():
+            return send_from_directory(FRONTEND_DIR, 'index.html')
+        from flask import abort
+        abort(404)
 
 
 def register_blueprints(app: Flask) -> None:
@@ -52,6 +83,8 @@ def register_blueprints(app: Flask) -> None:
 
     # Import blueprints
     from app.api.auth import auth_bp
+    from app.api.dashboard import dashboard_bp
+    from app.api.projects import projects_bp
     from app.api.floors import floors_bp
     from app.api.work_logs import work_logs_bp
     from app.api.critical_sectors import critical_sectors_bp
@@ -61,6 +94,8 @@ def register_blueprints(app: Flask) -> None:
 
     # Register blueprints
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
+    app.register_blueprint(dashboard_bp, url_prefix='/api/dashboard')
+    app.register_blueprint(projects_bp, url_prefix='/api/projects')
     app.register_blueprint(floors_bp, url_prefix='/api/floors')
     app.register_blueprint(work_logs_bp, url_prefix='/api/work-logs')
     app.register_blueprint(critical_sectors_bp,

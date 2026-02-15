@@ -531,6 +531,7 @@ class TileService:
             from flask import current_app
 
             floor_plans_dir = current_app.config.get(
+                'FLOOR_PLANS_DIR') or current_app.config.get(
                 'FLOOR_PLANS_DIRECTORY', 'floor-plans')
             tiles_dir = current_app.config.get('TILES_DIRECTORY', 'tiles')
 
@@ -568,6 +569,7 @@ class TileService:
             from flask import current_app
 
             floor_plans_dir = current_app.config.get(
+                'FLOOR_PLANS_DIR') or current_app.config.get(
                 'FLOOR_PLANS_DIRECTORY', 'floor-plans')
             tiles_dir = current_app.config.get('TILES_DIRECTORY', 'tiles')
 

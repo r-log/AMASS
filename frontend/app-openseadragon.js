@@ -305,6 +305,10 @@ createApp({
       // View management
       currentView: "map",
 
+      // Project data (for project-based filtering)
+      projects: [],
+      selectedProject: null,
+
       // Floor data
       floors: [],
       selectedFloor: null,
@@ -400,6 +404,7 @@ createApp({
 
       // Collapsible sections
       sectionsExpanded: {
+        projects: true,
         floors: true,
         quickStats: true,
         mapControls: true,
@@ -535,9 +540,10 @@ createApp({
     this.refreshCurrentUser();
     this.isAuthenticated = true;
 
-    // Admin users land on dashboard view instead of map
+    // Admin users have no project/job access - redirect to admin dashboard
     if (this.currentUser && this.currentUser.role === "admin") {
-      this.currentView = "admin";
+      window.location.href = "admin_dashboard.html";
+      return;
     }
 
     // Listen for auth user updates (e.g. after role change or token verify)
@@ -546,6 +552,7 @@ createApp({
 
     console.log("🔐 User authenticated:", this.currentUser);
 
+    await this.fetchProjects();
     await this.fetchFloors();
     await this.fetchStats();
     await this.fetchLogs();
@@ -569,19 +576,69 @@ createApp({
     },
 
     // API calls
+    async fetchProjects() {
+      try {
+        const response = await fetchWithAuth(`${API_BASE}/projects`);
+        if (response.ok) {
+          this.projects = await response.json();
+          console.log("✅ Projects loaded:", this.projects.length);
+          const stillExists = this.selectedProject && this.projects.some((p) => p.id === this.selectedProject.id);
+          if (!stillExists && this.selectedProject) {
+            this.selectedProject = null;
+            this.selectedFloor = null;
+            this.floors = [];
+          }
+          if (this.projects.length > 0 && !this.selectedProject) {
+            this.selectProject(this.projects[0]);
+          }
+        } else {
+          this.projects = [];
+        }
+      } catch (error) {
+        console.error("Error fetching projects:", error);
+        this.projects = [];
+      }
+    },
+
     async fetchFloors() {
       try {
-        console.log("🔍 Fetching floors with authentication...");
-        const response = await fetchWithAuth(`${API_BASE}/floors`);
+        const projectId = this.selectedProject?.id;
+        if (this.currentUser?.role === "worker" && !projectId) {
+          this.floors = [];
+          return;
+        }
+        const url = projectId
+          ? `${API_BASE}/floors?project_id=${projectId}`
+          : `${API_BASE}/floors`;
+        console.log("🔍 Fetching floors...", projectId ? `project=${projectId}` : "all");
+        const response = await fetchWithAuth(url);
         if (response.ok) {
           this.floors = await response.json();
           console.log("✅ Floors loaded:", this.floors.length);
+          if (this.selectedFloor && !this.floors.find((f) => f.id === this.selectedFloor.id)) {
+            this.selectedFloor = null;
+          }
         } else {
           console.error("❌ Failed to fetch floors, status:", response.status);
+          this.floors = [];
         }
       } catch (error) {
         console.error("Error fetching floors:", error);
+        this.floors = [];
       }
+    },
+
+    async selectProject(project) {
+      this.selectedProject = project;
+      this.selectedFloor = null;
+      await this.fetchFloors();
+      await this.checkAllTileStatuses();
+    },
+
+    async onProjectChange(event) {
+        const id = event.target.value ? parseInt(event.target.value, 10) : null;
+      const project = id ? this.projects.find((p) => p.id === id) : null;
+      await this.selectProject(project);
     },
 
     async fetchStats() {
@@ -666,20 +723,25 @@ createApp({
       }
     },
 
-    async generateTilesForFloor(floorId) {
+    async generateTilesForFloor(floorId, imagePath = null) {
       this.tileGenerationStatus = { generating: true };
 
       try {
+        const body = imagePath
+          ? { floor_id: floorId, image_path: imagePath }
+          : { floor_id: floorId };
         const response = await fetchWithAuth(
           `${API_BASE}/tiles/generate/${floorId}`,
           {
             method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
           }
         );
 
         const result = await response.json();
 
-        if (result.success) {
+        if (response.ok && result.success !== false) {
           this.tileGenerationStatus = { success: true };
           await this.checkTileStatus(floorId);
 
@@ -751,7 +813,7 @@ createApp({
           // User has permission - generate tiles
           console.log("🔑 User has permission to generate tiles");
           this.initializeViewer();
-          await this.generateTilesForFloor(floor.id);
+          await this.generateTilesForFloor(floor.id, floor.image_path);
         } else {
           // User doesn't have permission
           console.warn("🚫 User lacks permission to generate tiles");
@@ -1772,21 +1834,16 @@ createApp({
 
       // Role-based dashboard routing
       if (view === "admin") {
-        // Check user role and redirect to appropriate dashboard
         if (this.currentUser && this.currentUser.role === "worker") {
-          console.log(
-            "🔄 Worker detected - redirecting to worker_dashboard.html"
-          );
           window.location.href = "worker_dashboard.html";
           return;
         } else if (this.currentUser && this.currentUser.role === "supervisor") {
-          console.log(
-            "🔄 Supervisor detected - redirecting to supervisor_dashboard.html"
-          );
           window.location.href = "supervisor_dashboard.html";
           return;
+        } else if (this.currentUser && this.currentUser.role === "admin") {
+          window.location.href = "admin_dashboard.html";
+          return;
         }
-        // Admin users continue to admin view
       }
 
       this.currentView = view;

@@ -4,7 +4,7 @@ Work logs API routes.
 
 from flask import Blueprint, request, jsonify
 from app.services.work_log_service import WorkLogService
-from app.utils.decorators import token_required, supervisor_or_admin_required, validate_json_request
+from app.utils.decorators import token_required, supervisor_required, validate_json_request
 
 work_logs_bp = Blueprint('work_logs', __name__)
 
@@ -23,6 +23,8 @@ def get_work_logs():
             filters['floor_id'] = int(request.args.get('floor_id'))
         if request.args.get('worker_id'):
             filters['worker_id'] = int(request.args.get('worker_id'))
+        if request.args.get('project_id'):
+            filters['project_id'] = int(request.args.get('project_id'))
         if request.args.get('start_date'):
             filters['start_date'] = request.args.get('start_date')
         if request.args.get('end_date'):
@@ -200,7 +202,7 @@ def get_dashboard_stats():
 
 
 @work_logs_bp.route('/export', methods=['GET'])
-@supervisor_or_admin_required
+@supervisor_required
 def export_work_logs():
     """Export work logs in specified format."""
     try:
@@ -259,7 +261,7 @@ def get_work_logs_near_point():
 
 
 @work_logs_bp.route('/bulk-update', methods=['PUT'])
-@supervisor_or_admin_required
+@supervisor_required
 @validate_json_request
 def bulk_update_work_logs():
     """Bulk update multiple work logs."""

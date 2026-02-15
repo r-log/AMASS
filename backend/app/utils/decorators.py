@@ -75,6 +75,36 @@ def admin_required(f):
     return decorated
 
 
+def supervisor_required(f):
+    """Decorator to require supervisor role only (admin excluded). Includes token validation."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+
+        if 'Authorization' in request.headers:
+            auth_header = request.headers['Authorization']
+            try:
+                token = auth_header.split(' ')[1]
+            except IndexError:
+                return jsonify({'error': 'Invalid token format'}), 401
+
+        if not token:
+            return jsonify({'error': 'Token is missing'}), 401
+
+        success, user_data, message = AuthService.validate_token_middleware(token)
+        if not success:
+            return jsonify({'error': message}), 401
+
+        request.current_user = user_data
+
+        if request.current_user.get('role') != 'supervisor':
+            return jsonify({'error': 'Supervisor permissions required'}), 403
+
+        return f(*args, **kwargs)
+
+    return decorated
+
+
 def supervisor_or_admin_required(f):
     """Decorator to require supervisor or admin role. Includes token validation."""
     @wraps(f)
