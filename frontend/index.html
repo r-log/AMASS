@@ -1,0 +1,1528 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Electrician Work Log System</title>
+
+    <!-- Vue 3 from CDN -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <!-- Tailwind CSS from CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- OpenSeadragon -->
+    <script src="https://cdn.jsdelivr.net/npm/openseadragon@4.1.0/build/openseadragon/openseadragon.min.js"></script>
+
+    <!-- Chart.js for Data Visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <!-- Theme System -->
+    <link rel="stylesheet" href="theme.css">
+    <script src="theme.js"></script>
+
+    <!-- New Modular Architecture -->
+    <!-- Configuration -->
+    <script src="config/app.config.js"></script>
+
+    <!-- Core API Services -->
+    <script src="core/api/api.client.js"></script>
+    <script src="core/api/auth.service.js"></script>
+    <script src="core/api/floors.service.js"></script>
+    <script src="core/api/workLogs.service.js"></script>
+    <script src="core/api/tiles.service.js"></script>
+    <script src="core/api/criticalSectors.service.js"></script>
+
+    <!-- Utilities -->
+    <script src="core/utils/date.utils.js"></script>
+    <script src="core/utils/format.utils.js"></script>
+
+    <!-- Authentication Manager (uses services) -->
+    <script src="auth.js"></script>
+
+    <!-- Critical Sector Drawer -->
+    <script src="components/critical-sector-drawer.js"></script>
+
+    <style>
+        /* Only disable scroll on map view */
+        body.map-view {
+            overflow: hidden;
+        }
+
+        #openseadragon-viewer {
+            width: 100%;
+            height: 600px;
+            background: #f3f4f6;
+            border: 2px solid #d1d5db;
+            border-radius: 0.5rem;
+            position: relative;
+        }
+
+        .work-marker-overlay {
+            position: absolute;
+            width: 24px;
+            height: 24px;
+            margin-left: -12px;
+            margin-top: -12px;
+            background: #ef4444;
+            border: 2px solid white;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 10;
+            animation: pulse 2s infinite;
+        }
+
+        .work-marker-overlay:hover {
+            transform: scale(1.2);
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+            }
+
+            70% {
+                box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+            }
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 20px;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            max-width: 500px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .tile-status {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 20;
+            background: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            font-size: 14px;
+        }
+
+        .generating-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #e5e7eb;
+            border-top: 2px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Remove theme-card styling for map view */
+        .theme-card.map-view-card {
+            border: none;
+            box-shadow: none;
+            background: transparent;
+            padding: 0 !important;
+        }
+
+        /* Full Screen Map Layout */
+        .map-view-layout {
+            position: relative;
+            height: calc(100vh - 60px);
+            overflow: hidden;
+        }
+
+        /* Fullscreen mode styles */
+        .map-view-layout.fullscreen-mode {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 9999;
+            background: #000;
+        }
+
+        .fullscreen-mode .main-content-area {
+            padding: 0;
+        }
+
+        .main-content-area {
+            position: absolute;
+            top: 0;
+            left: 320px;
+            right: 0;
+            bottom: 0;
+            padding: 16px;
+        }
+
+        /* Left Control Panel */
+        .control-panel {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 320px;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(10px);
+            border-right: 1px solid rgba(255, 215, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            z-index: 50;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.15),
+                0 4px 15px rgba(255, 215, 0, 0.1);
+        }
+
+        [data-theme="dark"] .control-panel {
+            background: rgba(0, 0, 0, 0.95);
+            border-right: 1px solid rgba(255, 215, 0, 0.3);
+        }
+
+        /* Control panel in fullscreen mode */
+        .fullscreen-mode .control-panel {
+            background: rgba(0, 0, 0, 0.95);
+            border-right: 1px solid rgba(255, 215, 0, 0.3);
+        }
+
+        /* Modern Floor Navigator */
+        .panel-section {
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 215, 0, 0.2);
+        }
+
+        [data-theme="dark"] .panel-section {
+            border-bottom: 1px solid rgba(255, 215, 0, 0.2);
+        }
+
+        .panel-section-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #ffd700;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        [data-theme="dark"] .panel-section-title {
+            color: #ffd700;
+        }
+
+        .panel-section-title:hover {
+            color: #ffed4e;
+        }
+
+        .section-chevron {
+            font-size: 14px;
+            transition: transform 0.2s ease;
+        }
+
+        .section-chevron.expanded {
+            transform: rotate(180deg);
+        }
+
+        .section-content {
+            max-height: 1000px;
+            overflow: hidden;
+            transition: max-height 0.3s ease, opacity 0.3s ease;
+            opacity: 1;
+        }
+
+        .section-content.collapsed {
+            max-height: 0;
+            opacity: 0;
+        }
+
+        .floor-navigator {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .floor-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 2px solid transparent;
+        }
+
+        .floor-item:hover {
+            background: rgba(255, 215, 0, 0.1);
+            transform: translateX(2px);
+        }
+
+        .floor-item-active {
+            background: rgba(255, 215, 0, 0.15) !important;
+            border-color: #ffd700;
+            transform: translateX(4px);
+        }
+
+        .floor-item-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .floor-number {
+            font-size: 18px;
+            font-weight: 700;
+            color: #ffffff;
+            min-width: 60px;
+        }
+
+        .floor-item-active .floor-number {
+            color: #ffd700;
+        }
+
+        .floor-indicator {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #10b981;
+        }
+
+        /* Quick Stats */
+        .quick-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            padding: 10px;
+            text-align: center;
+            border: 1px solid rgba(255, 215, 0, 0.2);
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 2px;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: #ffd700;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        /* Floating Date Navigator */
+        .floating-date-nav {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 12px 16px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            z-index: 30;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        [data-theme="dark"] .floating-date-nav {
+            background: rgba(20, 20, 30, 0.95);
+        }
+
+        .date-nav-btn {
+            background: rgba(0, 0, 0, 0.05);
+            border: none;
+            border-radius: 6px;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        [data-theme="dark"] .date-nav-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: #f3f4f6;
+        }
+
+        .date-nav-btn:hover:not(:disabled) {
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        [data-theme="dark"] .date-nav-btn:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .date-nav-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .date-input {
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 6px;
+            padding: 6px 12px;
+            font-size: 13px;
+            background: white;
+        }
+
+        [data-theme="dark"] .date-input {
+            background: rgba(0, 0, 0, 0.3);
+            border-color: rgba(255, 255, 255, 0.1);
+            color: #f3f4f6;
+        }
+
+        /* Floating Legend */
+        .floating-legend {
+            position: absolute;
+            bottom: 16px;
+            right: 16px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 12px 16px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            z-index: 30;
+        }
+
+        [data-theme="dark"] .floating-legend {
+            background: rgba(20, 20, 30, 0.95);
+        }
+
+        .legend-items {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+        }
+
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+        }
+
+        @media (max-width: 768px) {
+            .control-panel {
+                width: 100%;
+                height: auto;
+                max-height: 60%;
+                bottom: 0;
+                top: auto;
+                right: 0;
+                left: 0;
+                border-right: none;
+                border-top: 1px solid rgba(255, 215, 0, 0.3);
+            }
+
+            .main-content-area {
+                left: 0;
+                bottom: 40%;
+            }
+
+            .floating-date-nav,
+            .floating-legend {
+                display: none;
+            }
+        }
+
+        /* Sidebar Navigation Styles */
+        .top-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.15),
+                0 4px 15px rgba(255, 215, 0, 0.1),
+                0 2px 5px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            z-index: 1000;
+        }
+
+        [data-theme="dark"] .top-bar {
+            background: rgba(0, 0, 0, 0.95);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.15),
+                0 4px 15px rgba(255, 215, 0, 0.1),
+                0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        .hamburger-menu {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            background: transparent;
+            border: none;
+        }
+
+        .hamburger-menu:hover {
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        [data-theme="dark"] .hamburger-menu:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .hamburger-icon {
+            font-size: 24px;
+        }
+
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: -300px;
+            width: 300px;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.15),
+                0 4px 15px rgba(255, 215, 0, 0.1),
+                2px 0 10px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s ease;
+            z-index: 1100;
+            display: flex;
+            flex-direction: column;
+        }
+
+        [data-theme="dark"] .sidebar {
+            background: rgba(0, 0, 0, 0.95);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.15),
+                0 4px 15px rgba(255, 215, 0, 0.1),
+                2px 0 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .sidebar.open {
+            transform: translateX(300px);
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 215, 0, 0.3);
+            background: rgba(255, 215, 0, 0.05);
+        }
+
+        [data-theme="dark"] .sidebar-header {
+            border-bottom: 1px solid rgba(255, 215, 0, 0.3);
+            background: rgba(255, 215, 0, 0.05);
+        }
+
+        .sidebar-user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .sidebar-user-avatar {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            padding: 20px 0;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 15px 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+            font-size: 16px;
+            color: #ffffff;
+        }
+
+        .nav-item:hover {
+            background: rgba(255, 215, 0, 0.1);
+            color: #ffd700;
+        }
+
+        [data-theme="dark"] .nav-item:hover {
+            background: rgba(255, 215, 0, 0.1);
+            color: #ffd700;
+        }
+
+        .nav-item.active {
+            background: rgba(255, 215, 0, 0.15);
+            color: #ffd700;
+            border-right: 3px solid #ffd700;
+        }
+
+        .nav-item-icon {
+            margin-right: 12px;
+            font-size: 20px;
+        }
+
+        .sidebar-footer {
+            padding: 20px;
+            border-top: 1px solid rgba(255, 215, 0, 0.3);
+        }
+
+        [data-theme="dark"] .sidebar-footer {
+            border-top: 1px solid rgba(255, 215, 0, 0.3);
+        }
+
+        .logout-btn {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            font-size: 14px;
+        }
+
+        .logout-btn:hover {
+            background: #dc2626;
+            transform: translateY(-1px);
+        }
+
+        .sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1050;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* Main content - fixed height only for map view */
+        .main-content {
+            margin-top: 60px;
+            min-height: calc(100vh - 60px);
+        }
+
+        body.map-view .main-content {
+            height: calc(100vh - 60px);
+            overflow: hidden;
+        }
+
+        .main-content>.container {
+            max-width: none;
+            width: 100%;
+        }
+
+        body.map-view .main-content>.container {
+            height: 100%;
+        }
+
+        /* Logo in top bar */
+        .top-bar-logo {
+            height: 40px;
+            width: auto;
+        }
+
+        /* Theme toggle in top bar */
+        .top-bar-theme-toggle {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 20px;
+        }
+
+        .top-bar-theme-toggle:hover {
+            background: rgba(0, 0, 0, 0.1);
+        }
+
+        [data-theme="dark"] .top-bar-theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <!-- Hamburger Menu -->
+            <button class="hamburger-menu" @click="toggleSidebar">
+                <span class="hamburger-icon">☰</span>
+            </button>
+
+            <!-- Logo -->
+            <div class="flex items-center">
+                <img src="../assets/Logo.png" alt="Electrician Work Log System"
+                    class="theme-logo theme-logo-dark top-bar-logo">
+                <img src="../assets/Logo (light).png" alt="Electrician Work Log System"
+                    class="theme-logo theme-logo-light top-bar-logo">
+            </div>
+
+            <!-- Theme Toggle -->
+            <button id="theme-toggle" class="top-bar-theme-toggle" title="Toggle theme">
+                <span class="theme-toggle-icon">🌙</span>
+            </button>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="sidebar" :class="{ 'open': sidebarOpen }">
+            <!-- Sidebar Header -->
+            <div class="sidebar-header">
+                <div class="sidebar-user-info" v-if="currentUser">
+                    <div class="sidebar-user-avatar">
+                        {{ currentUser.full_name.charAt(0).toUpperCase() }}
+                    </div>
+                    <div>
+                        <div class="font-medium theme-text-primary">{{ currentUser.full_name }}</div>
+                        <div class="text-sm theme-text-secondary capitalize">{{ currentUser.role }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation -->
+            <div class="sidebar-nav">
+                <button class="nav-item" :class="{ 'active': currentView === 'map' }" @click="setView('map')">
+                    <span class="nav-item-icon">📍</span>
+                    MAP
+                </button>
+                <button class="nav-item" :class="{ 'active': currentView === 'admin' }" @click="setView('admin')">
+                    <span class="nav-item-icon">📊</span>
+                    DASHBOARD
+                </button>
+            </div>
+
+            <!-- Sidebar Footer -->
+            <div class="sidebar-footer">
+                <button class="logout-btn" @click="logout">
+                    <span style="margin-right: 8px;">🚪</span>
+                    Logout
+                </button>
+            </div>
+        </div>
+
+        <!-- Sidebar Overlay -->
+        <div class="sidebar-overlay" :class="{ 'active': sidebarOpen }" @click="closeSidebar"></div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="container" :class="{ 'mx-auto px-4 py-6': currentView !== 'map' }">
+
+                <!-- Map View -->
+                <div v-if="currentView === 'map'" class="theme-card map-view-card">
+                    <div class="map-view-layout" :class="{ 'fullscreen-mode': isCustomFullscreen }">
+                        <!-- Main Map Area -->
+                        <div class="main-content-area">
+                            <div v-if="selectedFloor" class="h-full">
+                                <!-- OpenSeadragon Viewer Container -->
+                                <div id="openseadragon-viewer" style="width: 100%; height: 100%;"></div>
+
+                                <!-- Floating Date Navigator -->
+                                <div v-if="selectedFloor && availableDates.length > 0" class="floating-date-nav">
+                                    <button @click="previousDay" :disabled="!hasPreviousDate" class="date-nav-btn">
+                                        ◀
+                                    </button>
+                                    <input type="date" v-model="selectedDate" @change="onDateChange" :min="earliestDate"
+                                        :max="latestDate" class="date-input">
+                                    <button @click="nextDay" :disabled="!hasNextDate" class="date-nav-btn">
+                                        ▶
+                                    </button>
+                                    <button @click="goToToday" class="date-nav-btn" title="Today">
+                                        📅
+                                    </button>
+                                    <button @click="showAllDates" class="date-nav-btn"
+                                        :title="dateFilterEnabled ? 'Show All' : 'Filter by Date'">
+                                        {{ dateFilterEnabled ? '⊗' : '⊙' }}
+                                    </button>
+                                </div>
+
+                                <!-- Floating Legend -->
+                                <div class="floating-legend">
+                                    <div class="legend-items">
+                                        <div class="legend-item">
+                                            <div class="legend-dot" style="background: #ef4444;"></div>
+                                            <span>Electrical</span>
+                                        </div>
+                                        <div class="legend-item">
+                                            <div class="legend-dot" style="background: #3b82f6;"></div>
+                                            <span>Lighting</span>
+                                        </div>
+                                        <div class="legend-item">
+                                            <div class="legend-dot" style="background: #10b981;"></div>
+                                            <span>Maintenance</span>
+                                        </div>
+                                        <div class="legend-item">
+                                            <div class="legend-dot" style="background: #eab308;"></div>
+                                            <span>Installation</span>
+                                        </div>
+                                        <div class="legend-item">
+                                            <div class="legend-dot" style="background: #8b5cf6;"></div>
+                                            <span>Other</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Tile Status Indicator -->
+                                <div v-if="tileGenerationStatus" class="tile-status">
+                                    <div v-if="tileGenerationStatus.generating" class="generating-indicator">
+                                        <div class="spinner"></div>
+                                        <span>Generating tiles...</span>
+                                    </div>
+                                    <div v-else-if="tileGenerationStatus.success" class="text-green-600">
+                                        ✓ Tiles ready
+                                    </div>
+                                    <div v-else-if="tileGenerationStatus.error" class="text-red-600">
+                                        ⚠ {{ tileGenerationStatus.error }}
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-else class="h-full flex items-center justify-center text-gray-500">
+                                <div class="text-center">
+                                    <p class="text-2xl mb-2">👈</p>
+                                    <p class="text-lg">Select a floor to view the map</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Right Control Panel -->
+                        <div class="control-panel">
+                            <!-- Floor Navigator Section -->
+                            <div class="panel-section">
+                                <div class="panel-section-title" @click="toggleSection('floors')">
+                                    <span>Floors</span>
+                                    <span class="section-chevron"
+                                        :class="{ 'expanded': sectionsExpanded.floors }">▼</span>
+                                </div>
+                                <div class="section-content" :class="{ 'collapsed': !sectionsExpanded.floors }">
+                                    <div class="floor-navigator">
+                                        <div v-for="floor in sortedFloors" :key="floor.id" @click="selectFloor(floor)"
+                                            :class="['floor-item', { 'floor-item-active': selectedFloor?.id === floor.id }]">
+                                            <div class="floor-item-label">
+                                                <span class="floor-number">{{ floor.name }}</span>
+                                                <span v-if="tileStatuses[floor.id]?.tiles_exist"
+                                                    class="floor-indicator"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Quick Stats Section -->
+                            <div class="panel-section" v-if="selectedFloor">
+                                <div class="panel-section-title" @click="toggleSection('quickStats')">
+                                    <span>Quick Stats</span>
+                                    <span class="section-chevron"
+                                        :class="{ 'expanded': sectionsExpanded.quickStats }">▼</span>
+                                </div>
+                                <div class="section-content" :class="{ 'collapsed': !sectionsExpanded.quickStats }">
+                                    <div class="quick-stats">
+                                        <div class="stat-card">
+                                            <div class="stat-value">{{ currentFloorLogs.length }}</div>
+                                            <div class="stat-label">Total Logs</div>
+                                        </div>
+                                        <div class="stat-card">
+                                            <div class="stat-value">{{ displayLogs.length }}</div>
+                                            <div class="stat-label">Visible</div>
+                                        </div>
+                                        <div class="stat-card">
+                                            <div class="stat-value">{{ availableDates.length }}</div>
+                                            <div class="stat-label">Dates</div>
+                                        </div>
+                                        <div class="stat-card">
+                                            <div class="stat-value">{{ markerManager?.markers.size || 0 }}</div>
+                                            <div class="stat-label">Markers</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Map Controls Section -->
+                            <div class="panel-section" v-if="selectedFloor">
+                                <div class="panel-section-title">Map Controls</div>
+                                <div class="flex flex-col gap-2">
+                                    <button @click="viewer?.viewport?.goHome()"
+                                        class="date-nav-btn text-left px-3 py-2">
+                                        🏠 Reset View
+                                    </button>
+                                    <button @click="toggleCustomFullscreen()" class="date-nav-btn text-left px-3 py-2">
+                                        {{ isCustomFullscreen ? '⛶ Exit Fullscreen' : '⛶ Fullscreen' }}
+                                    </button>
+                                    <button @click="updateMarkerOverlays()" class="date-nav-btn text-left px-3 py-2">
+                                        🔄 Refresh Markers
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Critical Sectors Section (visible to all, edit for Supervisor/Admin only) -->
+                            <div class="panel-section" v-if="selectedFloor">
+                                <div class="panel-section-title" @click="toggleSection('sectors')">
+                                    <span>⚠️ Critical Sectors</span>
+                                    <span class="section-chevron"
+                                        :class="{ 'expanded': sectionsExpanded.sectors }">▼</span>
+                                </div>
+                                <div class="section-content" :class="{ 'collapsed': !sectionsExpanded.sectors }">
+                                    <!-- Mode Indicator (Supervisor/Admin only when drawing) -->
+                                    <div v-if="canManageSectors"
+                                        style="margin-bottom: 12px; padding: 10px; border-radius: 8px; text-align: center; font-size: 12px; font-weight: 600;"
+                                        :style="isDrawingMode ? 'background: rgba(255, 215, 0, 0.2); color: #ffd700; border: 1px solid #ffd700;' : 'background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid #10b981;'">
+                                        {{ isDrawingMode ? '🎨 DRAWING MODE ACTIVE' : '✓ NORMAL MODE' }}
+                                    </div>
+
+                                    <div class="flex flex-col gap-2">
+                                        <template v-if="canManageSectors">
+                                            <button @click="startSectorDrawing('rectangle')" :disabled="isDrawingMode"
+                                                class="date-nav-btn text-left px-3 py-2"
+                                                :style="isDrawingMode && sectorDrawer?.drawingMode === 'rectangle' ? 'background: rgba(255, 215, 0, 0.3); border: 1px solid #ffd700;' : ''">
+                                                ⬜ Draw Rectangle
+                                            </button>
+                                            <button @click="startSectorDrawing('polygon')" :disabled="isDrawingMode"
+                                                class="date-nav-btn text-left px-3 py-2"
+                                                :style="isDrawingMode && sectorDrawer?.drawingMode === 'polygon' ? 'background: rgba(255, 215, 0, 0.3); border: 1px solid #ffd700;' : ''">
+                                                📐 Draw Polygon
+                                            </button>
+                                            <button v-if="isDrawingMode" @click="cancelSectorDrawing"
+                                                class="date-nav-btn text-left px-3 py-2"
+                                                style="background: rgba(239, 68, 68, 0.3); color: #ef4444; border: 1px solid #ef4444; font-weight: 600;">
+                                                ❌ Cancel Drawing
+                                            </button>
+                                            <button v-if="currentFloorSectors.length > 0" @click="clearAllSectorsOnFloor"
+                                                class="date-nav-btn text-left px-3 py-2"
+                                                style="background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid #ef4444; font-weight: 600;">
+                                                🗑️ Clear All Sectors
+                                            </button>
+                                        </template>
+                                        <button @click="toggleSectorVisibility"
+                                            class="date-nav-btn text-left px-3 py-2">
+                                            {{ sectorsVisible ? '👁️ Hide Sectors' : '👁️‍🗨️ Show Sectors' }}
+                                        </button>
+                                    </div>
+
+                                    <!-- Instructions when drawing -->
+                                    <div v-if="isDrawingMode"
+                                        style="margin-top: 12px; padding: 10px; background: rgba(255, 215, 0, 0.1); border-radius: 6px; font-size: 11px; color: #ffd700; border: 1px solid rgba(255, 215, 0, 0.3);">
+                                        <div style="font-weight: 600; margin-bottom: 6px;">📝 INSTRUCTIONS:</div>
+                                        <div v-if="sectorDrawer?.drawingMode === 'rectangle'">
+                                            1. Click first corner<br>
+                                            2. Click opposite corner
+                                        </div>
+                                        <div v-if="sectorDrawer?.drawingMode === 'polygon'">
+                                            1. Click to add points<br>
+                                            2. Double-click to finish
+                                        </div>
+                                    </div>
+
+                                    <div v-if="currentFloorSectors.length > 0"
+                                        style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255, 215, 0, 0.2);">
+                                        <div style="color: #ffd700; font-size: 11px; margin-bottom: 8px;">ON THIS FLOOR:
+                                        </div>
+                                        <div style="font-size: 12px; color: #ffffff;">
+                                            {{ currentFloorSectors.length }} sector{{ currentFloorSectors.length !== 1 ?
+                                            's' : '' }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Date Filter Info -->
+                            <div class="panel-section" v-if="selectedFloor && dateFilterEnabled">
+                                <div class="panel-section-title">Date Filter</div>
+                                <div class="text-sm"
+                                    style="padding: 8px 12px; background: rgba(255, 215, 0, 0.1); border-radius: 6px;">
+                                    <div class="font-medium mb-1" style="color: #ffd700;">{{
+                                        formatDateFull(selectedDate) }}</div>
+                                    <div style="color: #ffffff; font-size: 11px;">
+                                        Showing {{ filteredFloorLogs.length }} of {{ currentFloorLogs.length }} logs
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Keyboard Shortcuts -->
+                            <div class="panel-section">
+                                <div class="panel-section-title">Keyboard Shortcuts</div>
+                                <div class="text-xs" style="color: #ffffff; line-height: 1.8;">
+                                    <div><strong style="color: #ffd700;">Floor Navigation</strong></div>
+                                    <div style="margin-left: 8px;">1-6 Jump to floor</div>
+                                    <div style="margin-top: 8px;"><strong style="color: #ffd700;">Date
+                                            Navigation</strong></div>
+                                    <div style="margin-left: 8px;">← → Navigate dates</div>
+                                    <div style="margin-left: 8px;">T Go to today</div>
+                                    <div style="margin-left: 8px;">A Toggle date filter</div>
+                                    <div style="margin-left: 8px;">ESC Show all dates</div>
+                                    <div style="margin-top: 8px;"><strong style="color: #ffd700;">Map Controls</strong>
+                                    </div>
+                                    <div style="margin-left: 8px;">R Reset view</div>
+                                    <div style="margin-left: 8px;">F Toggle fullscreen</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Advanced Analytics Dashboard -->
+                <div v-if="currentView === 'admin'"
+                    style="background: #0a0a0f; min-height: calc(100vh - 60px); padding: 24px; overflow-y: auto;">
+
+                    <!-- Dashboard Header -->
+                    <div style="margin-bottom: 32px;">
+                        <h1 style="font-size: 28px; font-weight: 700; color: #ffd700; margin-bottom: 8px;">Analytics
+                            Dashboard</h1>
+                        <p style="color: #9ca3af; font-size: 14px;">Comprehensive work tracking and performance insights
+                        </p>
+                    </div>
+
+                    <!-- Executive KPI Cards -->
+                    <div
+                        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; margin-bottom: 32px;">
+
+                        <!-- Total Work Logs -->
+                        <div
+                            style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(37, 99, 235, 0.05)); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 12px; padding: 20px; position: relative; overflow: hidden;">
+                            <div style="position: absolute; top: -20px; right: -20px; font-size: 80px; opacity: 0.1;">📊
+                            </div>
+                            <div style="position: relative; z-index: 1;">
+                                <div
+                                    style="color: #60a5fa; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+                                    Total Work Logs</div>
+                                <div style="color: #ffffff; font-size: 36px; font-weight: 700; margin-bottom: 4px;">{{
+                                    stats.total_logs }}</div>
+                                <div
+                                    style="color: #10b981; font-size: 13px; display: flex; align-items: center; gap: 4px;">
+                                    <span>↑ {{ stats.recent_logs }}</span>
+                                    <span style="color: #6b7280;">last 7 days</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Active Floors -->
+                        <div
+                            style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.05)); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 20px; position: relative; overflow: hidden;">
+                            <div style="position: absolute; top: -20px; right: -20px; font-size: 80px; opacity: 0.1;">🏢
+                            </div>
+                            <div style="position: relative; z-index: 1;">
+                                <div
+                                    style="color: #34d399; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+                                    Active Floors</div>
+                                <div style="color: #ffffff; font-size: 36px; font-weight: 700; margin-bottom: 4px;">{{
+                                    activeFloorsCount }} / 6</div>
+                                <div style="color: #10b981; font-size: 13px;">
+                                    <span>{{ Math.round((activeFloorsCount / 6) * 100) }}% coverage</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Work Types -->
+                        <div
+                            style="background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(124, 58, 237, 0.05)); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 12px; padding: 20px; position: relative; overflow: hidden;">
+                            <div style="position: absolute; top: -20px; right: -20px; font-size: 80px; opacity: 0.1;">🔧
+                            </div>
+                            <div style="position: relative; z-index: 1;">
+                                <div
+                                    style="color: #a78bfa; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+                                    Work Categories</div>
+                                <div style="color: #ffffff; font-size: 36px; font-weight: 700; margin-bottom: 4px;">{{
+                                    stats.work_types.length }}</div>
+                                <div style="color: #8b5cf6; font-size: 13px;">
+                                    <span>Distinct types tracked</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- AI-Ready: Efficiency Score -->
+                        <div
+                            style="background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(234, 179, 8, 0.05)); border: 1px solid rgba(255, 215, 0, 0.3); border-radius: 12px; padding: 20px; position: relative; overflow: hidden;">
+                            <div style="position: absolute; top: -20px; right: -20px; font-size: 80px; opacity: 0.1;">🤖
+                            </div>
+                            <div style="position: relative; z-index: 1;">
+                                <div
+                                    style="color: #ffd700; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">
+                                    AI Efficiency Score</div>
+                                <div style="color: #ffffff; font-size: 36px; font-weight: 700; margin-bottom: 4px;">85%
+                                </div>
+                                <div
+                                    style="color: #ffd700; font-size: 13px; display: flex; align-items: center; gap: 4px;">
+                                    <span
+                                        style="background: rgba(255, 215, 0, 0.2); padding: 2px 8px; border-radius: 4px; font-size: 11px;">AI
+                                        Ready</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Grid -->
+                    <div
+                        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 24px; margin-bottom: 32px;">
+
+                        <!-- Work Distribution Chart -->
+                        <div
+                            style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 215, 0, 0.2); border-radius: 12px; padding: 24px;">
+                            <h3
+                                style="color: #ffd700; font-size: 16px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                                <span>📈</span> Work Type Distribution
+                            </h3>
+                            <canvas id="workTypeChart" style="max-height: 250px;"></canvas>
+                        </div>
+
+                        <!-- Timeline Activity Chart -->
+                        <div
+                            style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 215, 0, 0.2); border-radius: 12px; padding: 24px;">
+                            <h3
+                                style="color: #ffd700; font-size: 16px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+                                <span>📊</span> Activity Timeline (30 Days)
+                            </h3>
+                            <canvas id="timelineChart" style="max-height: 250px;"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- AI-Ready Predictive Section -->
+                    <div
+                        style="background: linear-gradient(135deg, rgba(255, 215, 0, 0.05), rgba(234, 179, 8, 0.02)); border: 1px solid rgba(255, 215, 0, 0.3); border-radius: 12px; padding: 24px; margin-bottom: 32px;">
+                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px;">
+                            <span style="font-size: 32px;">🤖</span>
+                            <div>
+                                <h2 style="color: #ffd700; font-size: 20px; font-weight: 700; margin-bottom: 4px;">
+                                    AI-Powered Insights</h2>
+                                <p style="color: #9ca3af; font-size: 14px;">Predictive maintenance and optimization
+                                    recommendations</p>
+                            </div>
+                        </div>
+
+                        <div
+                            style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+                            <!-- Predicted Maintenance -->
+                            <div
+                                style="background: rgba(0, 0, 0, 0.3); border-left: 3px solid #3b82f6; border-radius: 8px; padding: 16px;">
+                                <div style="color: #60a5fa; font-size: 13px; font-weight: 600; margin-bottom: 8px;">⚠️
+                                    MAINTENANCE PREDICTION</div>
+                                <div style="color: #ffffff; font-size: 15px; margin-bottom: 4px;">Floor 3: Electrical
+                                    System</div>
+                                <div style="color: #9ca3af; font-size: 13px;">Predicted issue in 14 days based on
+                                    pattern analysis</div>
+                            </div>
+
+                            <!-- Resource Optimization -->
+                            <div
+                                style="background: rgba(0, 0, 0, 0.3); border-left: 3px solid #10b981; border-radius: 8px; padding: 16px;">
+                                <div style="color: #34d399; font-size: 13px; font-weight: 600; margin-bottom: 8px;">💡
+                                    OPTIMIZATION TIP</div>
+                                <div style="color: #ffffff; font-size: 15px; margin-bottom: 4px;">Peak Activity:
+                                    Tuesdays 10-12 AM</div>
+                                <div style="color: #9ca3af; font-size: 13px;">Schedule non-urgent work on Wednesdays for
+                                    better efficiency</div>
+                            </div>
+
+                            <!-- Anomaly Detection -->
+                            <div
+                                style="background: rgba(0, 0, 0, 0.3); border-left: 3px solid #f59e0b; border-radius: 8px; padding: 16px;">
+                                <div style="color: #fbbf24; font-size: 13px; font-weight: 600; margin-bottom: 8px;">🔍
+                                    ANOMALY DETECTED</div>
+                                <div style="color: #ffffff; font-size: 15px; margin-bottom: 4px;">Unusual Cluster: Floor
+                                    5 SW Corner</div>
+                                <div style="color: #9ca3af; font-size: 13px;">3x more maintenance than average -
+                                    investigate root cause</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Floor Performance Matrix -->
+                    <div
+                        style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 215, 0, 0.2); border-radius: 12px; padding: 24px; margin-bottom: 32px;">
+                        <h2 style="color: #ffd700; font-size: 18px; font-weight: 700; margin-bottom: 20px;">Floor
+                            Performance Matrix</h2>
+
+                        <div
+                            style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px;">
+                            <div v-for="floor in floors" :key="floor.id"
+                                style="background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 215, 0, 0.2); border-radius: 8px; padding: 16px; transition: all 0.3s ease;"
+                                @mouseenter="$event.target.style.borderColor = '#ffd700'"
+                                @mouseleave="$event.target.style.borderColor = 'rgba(255, 215, 0, 0.2)'">
+
+                                <div
+                                    style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                                    <div style="color: #ffd700; font-size: 16px; font-weight: 700;">{{ floor.name }}
+                                    </div>
+                                    <div
+                                        :style="`background: ${getFloorLogsCount(floor.id) > 10 ? '#10b981' : getFloorLogsCount(floor.id) > 5 ? '#f59e0b' : '#6b7280'}; width: 8px; height: 8px; border-radius: 50%;`">
+                                    </div>
+                                </div>
+
+                                <div style="color: #ffffff; font-size: 24px; font-weight: 700; margin-bottom: 8px;">
+                                    {{ getFloorLogsCount(floor.id) }}
+                                </div>
+
+                                <div style="color: #9ca3af; font-size: 12px; margin-bottom: 12px;">Total work logs</div>
+
+                                <div
+                                    style="background: rgba(255, 255, 255, 0.05); border-radius: 4px; height: 6px; overflow: hidden;">
+                                    <div
+                                        :style="`width: ${Math.min((getFloorLogsCount(floor.id) / 50) * 100, 100)}%; background: linear-gradient(90deg, #ffd700, #f59e0b); height: 100%; transition: width 0.3s ease;`">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tile Generation & System Tools -->
+                    <div
+                        style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 215, 0, 0.2); border-radius: 12px; padding: 24px;">
+                        <h2 style="color: #ffd700; font-size: 18px; font-weight: 700; margin-bottom: 20px;">System
+                            Management</h2>
+
+                        <div
+                            style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 20px;">
+                            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
+                                <span style="font-size: 24px;">🗺️</span>
+                                <div>
+                                    <h3 style="color: #60a5fa; font-size: 16px; font-weight: 600; margin-bottom: 4px;">
+                                        Tile Generation</h3>
+                                    <p style="color: #9ca3af; font-size: 13px;">Generate high-performance map tiles for
+                                        all floors</p>
+                                </div>
+                            </div>
+
+                            <button @click="generateAllTiles" :disabled="batchGenerating"
+                                style="background: linear-gradient(135deg, #3b82f6, #2563eb); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.3s ease;"
+                                @mouseenter="$event.target.style.transform = 'translateY(-2px)'"
+                                @mouseleave="$event.target.style.transform = 'translateY(0)'">
+                                <span v-if="batchGenerating">⏳ Generating Tiles...</span>
+                                <span v-else>🚀 Generate All Tiles</span>
+                            </button>
+
+                            <div v-if="batchResults.length > 0"
+                                style="margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+                                <div v-for="result in batchResults" :key="result.floor_id" style="margin-bottom: 8px;">
+                                    <span style="color: #ffffff;">{{ result.floor_name }}:</span>
+                                    <span
+                                        :style="`color: ${result.status === 'success' ? '#10b981' : result.status === 'failed' ? '#ef4444' : '#6b7280'}; margin-left: 8px;`">
+                                        {{ result.message }}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Work Log Modal -->
+                <div v-if="showModal" class="modal-overlay" @click.self="closeModal">
+                    <div class="modal-content">
+                        <div class="p-6">
+                            <h3 class="text-lg font-semibold mb-4">
+                                {{ editMode ? 'Edit Work Log' : 'Add Work Log' }}
+                            </h3>
+
+                            <form @submit.prevent="submitWorkLog">
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Date</label>
+                                    <input type="date" v-model="newLog.work_date" required
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                                </div>
+
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Worker Name</label>
+                                    <input type="text" v-model="newLog.worker_name" required
+                                        placeholder="Enter your name"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                                </div>
+
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Work Type</label>
+                                    <select v-model="newLog.work_type" required
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                                        <option value="">Select work type</option>
+                                        <option value="Electrical">Electrical</option>
+                                        <option value="Lighting">Lighting</option>
+                                        <option value="Maintenance">Maintenance</option>
+                                        <option value="Installation">Installation</option>
+                                        <option value="Inspection">Inspection</option>
+                                        <option value="Repair">Repair</option>
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+
+                                <div class="mb-6">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                                    <textarea v-model="newLog.description" rows="3"
+                                        placeholder="Describe the work performed..."
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                                </textarea>
+                                </div>
+
+                                <div class="flex gap-3 justify-end">
+                                    <button type="button" @click="closeModal"
+                                        class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
+                                        Cancel
+                                    </button>
+                                    <button type="submit"
+                                        class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">
+                                        Save Work Log
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Critical Sector Save Modal -->
+                <div v-if="showSectorModal" class="modal-overlay" @click.self="closeSectorModal">
+                    <div class="modal-content">
+                        <div class="p-6">
+                            <h3 class="text-lg font-semibold mb-4" style="color: #ffd700;">Save Critical Sector</h3>
+
+                            <form @submit.prevent="submitCriticalSector">
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Sector Name</label>
+                                    <input type="text" v-model="newSector.sector_name" required
+                                        placeholder="e.g., High Voltage Area"
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-yellow-500 focus:border-yellow-500">
+                                </div>
+
+                                <div class="mb-4">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">Priority Level</label>
+                                    <select v-model="newSector.priority" required
+                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-yellow-500 focus:border-yellow-500">
+                                        <option value="high">🔴 High Priority</option>
+                                        <option value="medium">🟡 Medium Priority</option>
+                                        <option value="standard">🟢 Standard</option>
+                                    </select>
+                                </div>
+
+                                <div class="mb-4" style="background: #f3f4f6; padding: 12px; border-radius: 8px;">
+                                    <div class="text-sm font-medium text-gray-700 mb-2">Sector Info</div>
+                                    <div class="text-xs text-gray-600">
+                                        <div>Type: {{ newSector.type }}</div>
+                                        <div>Position: {{ Math.round(newSector.x_coord * 100) }}%, {{
+                                            Math.round(newSector.y_coord * 100) }}%</div>
+                                        <div>Radius: {{ Math.round(newSector.radius * 100) }}%</div>
+                                    </div>
+                                </div>
+
+                                <div class="flex gap-3 justify-end">
+                                    <button type="button" @click="closeSectorModal"
+                                        class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
+                                        Cancel
+                                    </button>
+                                    <button type="submit" class="px-4 py-2 text-white rounded-md hover:opacity-90"
+                                        style="background: linear-gradient(135deg, #ffd700, #f59e0b); color: #000; font-weight: 600;">
+                                        Save Sector
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sector Details Modal -->
+                <div v-if="showSectorDetailsModal" class="modal-overlay" @click.self="closeSectorDetailsModal">
+                    <div class="modal-content">
+                        <div class="p-6">
+                            <h3 class="text-lg font-semibold mb-4" style="color: #ffd700;">Critical Sector Details</h3>
+
+                            <div v-if="selectedSectorDetails">
+                                <div class="mb-3">
+                                    <span class="text-sm font-medium text-gray-600">Sector Name:</span>
+                                    <p class="text-base font-medium">{{ selectedSectorDetails.sector_name }}</p>
+                                </div>
+
+                                <div class="mb-3">
+                                    <span class="text-sm font-medium text-gray-600">Priority:</span>
+                                    <p class="text-base">
+                                        <span v-if="selectedSectorDetails.priority === 'high'">🔴 High Priority</span>
+                                        <span v-else-if="selectedSectorDetails.priority === 'medium'">🟡 Medium
+                                            Priority</span>
+                                        <span v-else>🟢 Standard</span>
+                                    </p>
+                                </div>
+
+                                <div class="mb-3">
+                                    <span class="text-sm font-medium text-gray-600">Type:</span>
+                                    <p class="text-base capitalize">{{ selectedSectorDetails.type }}</p>
+                                </div>
+
+                                <div class="mb-3">
+                                    <span class="text-sm font-medium text-gray-600">Position:</span>
+                                    <p class="text-base">X: {{ Math.round(selectedSectorDetails.x_coord * 100) }}%, Y:
+                                        {{ Math.round(selectedSectorDetails.y_coord * 100) }}%</p>
+                                </div>
+
+                                <div class="mb-3">
+                                    <span class="text-sm font-medium text-gray-600">Radius:</span>
+                                    <p class="text-base">{{ Math.round(selectedSectorDetails.radius * 100) }}%</p>
+                                </div>
+
+                                <div class="mb-3">
+                                    <span class="text-sm font-medium text-gray-600">Created:</span>
+                                    <p class="text-base">{{ formatDate(selectedSectorDetails.created_at) }}</p>
+                                </div>
+                            </div>
+
+                            <div class="flex justify-between mt-6">
+                                <!-- Delete Button (Supervisor/Admin only) -->
+                                <div class="flex gap-2" v-if="canManageSectors">
+                                    <button @click="deleteCriticalSector(selectedSectorDetails)"
+                                        class="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors">
+                                        🗑️ Delete Sector
+                                    </button>
+                                </div>
+
+                                <!-- Close Button -->
+                                <button @click="closeSectorDetailsModal"
+                                    class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors">
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Log Details Modal -->
+                <div v-if="showDetailsModal" class="modal-overlay" @click.self="closeDetailsModal">
+                    <div class="modal-content">
+                        <div class="p-6">
+                            <h3 class="text-lg font-semibold mb-4">Work Log Details</h3>
+
+                            <div v-if="selectedLogDetails">
+                                <div class="mb-3">
+                                    <span class="text-sm font-medium text-gray-600">Date:</span>
+                                    <p class="text-base">{{ formatDate(selectedLogDetails.work_date) }}</p>
+                                </div>
+
+                                <div class="mb-3">
+                                    <span class="text-sm font-medium text-gray-600">Worker:</span>
+                                    <p class="text-base font-medium">{{ selectedLogDetails.worker_name }}</p>
+                                </div>
+
+                                <div class="mb-3">
+                                    <span class="text-sm font-medium text-gray-600">Work Type:</span>
+                                    <p class="text-base">{{ selectedLogDetails.work_type }}</p>
+                                </div>
+
+                                <div class="mb-3">
+                                    <span class="text-sm font-medium text-gray-600">Description:</span>
+                                    <p class="text-base">{{ selectedLogDetails.description || 'No description provided'
+                                        }}
+                                    </p>
+                                </div>
+
+                                <div class="mb-3">
+                                    <span class="text-sm font-medium text-gray-600">Position:</span>
+                                    <p class="text-base">X: {{ Math.round(selectedLogDetails.x_coord * 100) }}%, Y:
+                                        {{
+                                        Math.round(selectedLogDetails.y_coord * 100) }}%</p>
+                                </div>
+                            </div>
+
+                            <div class="flex justify-between mt-6">
+                                <!-- Action Buttons -->
+                                <div class="flex gap-2">
+                                    <button @click="editWorkLog(selectedLogDetails)"
+                                        class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors">
+                                        ✏️ Edit
+                                    </button>
+                                    <button @click="deleteWorkLog(selectedLogDetails)"
+                                        class="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors">
+                                        🗑️ Delete
+                                    </button>
+                                </div>
+
+                                <!-- Close Button -->
+                                <button @click="closeDetailsModal"
+                                    class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors">
+                                    Close
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app-openseadragon.js"></script>
+</body>
+
+</html>

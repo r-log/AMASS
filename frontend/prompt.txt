@@ -1,0 +1,1 @@
+❌ Failed to open viewer: {message: 'HTTP 401 attempting to load TileSource: http://localhost:5000/api/tiles/2/floor-2.dzi', source: 'http://localhost:5000/api/tiles/2/floor-2.dzi', postData: null, eventSource: m.Viewer, userData: null, …}

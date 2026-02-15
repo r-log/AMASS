@@ -1,0 +1,46 @@
+# Database - never commit live data or credentials
+backend/database.db
+backend/database.db-journal
+backend/*.db
+backend/*.db-journal
+
+# Blueprints / floor plans - user-uploaded PDFs, may contain proprietary drawings
+floor-plans/
+backend/floor-plans/
+**/floor-plans/
+
+# Generated map tiles - output of tile generation, large and regenerable
+backend/tiles/
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+backend/.env
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+backend/venv/
+venv/
+.venv/
+*.egg-info/
+.eggs/
+
+# IDE and OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and temp
+*.log
+*.tmp
+.cache/

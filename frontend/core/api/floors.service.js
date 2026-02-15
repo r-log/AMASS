@@ -1,0 +1,143 @@
+/**
+ * Floors Service
+ * Handles floor-related API calls
+ */
+
+class FloorsService {
+  constructor(apiClient) {
+    this.client = apiClient;
+  }
+
+  /**
+   * Get all floors
+   */
+  async getAll() {
+    try {
+      const response = await this.client.get("/floors");
+      console.log(`✅ Loaded ${response.length} floors`);
+      return response;
+    } catch (error) {
+      console.error("❌ Failed to fetch floors:", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get floor by ID
+   */
+  async getById(floorId) {
+    try {
+      const response = await this.client.get(`/floors/${floorId}`);
+      console.log(`✅ Loaded floor ${floorId}:`, response.name);
+      return response;
+    } catch (error) {
+      console.error(`❌ Failed to fetch floor ${floorId}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Create new floor
+   */
+  async create(floorData) {
+    try {
+      const response = await this.client.post("/floors", floorData);
+      console.log("✅ Floor created:", response.name);
+      return response;
+    } catch (error) {
+      console.error("❌ Failed to create floor:", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Update floor
+   */
+  async update(floorId, floorData) {
+    try {
+      const response = await this.client.put(`/floors/${floorId}`, floorData);
+      console.log(`✅ Floor ${floorId} updated:`, response.name);
+      return response;
+    } catch (error) {
+      console.error(`❌ Failed to update floor ${floorId}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete floor
+   */
+  async delete(floorId) {
+    try {
+      const response = await this.client.delete(`/floors/${floorId}`);
+      console.log(`✅ Floor ${floorId} deleted`);
+      return response;
+    } catch (error) {
+      console.error(`❌ Failed to delete floor ${floorId}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Get floor statistics
+   */
+  async getStats(floorId) {
+    try {
+      const response = await this.client.get(`/floors/${floorId}/stats`);
+      return response;
+    } catch (error) {
+      console.error(
+        `❌ Failed to fetch floor ${floorId} stats:`,
+        error.message
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Upload floor plan image
+   */
+  async uploadFloorPlan(floorId, file) {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch(
+        `${this.client.baseUrl}/floors/${floorId}/upload`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.client.authManager.getToken()}`,
+          },
+          body: formData,
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Upload failed");
+      }
+
+      const result = await response.json();
+      console.log(`✅ Floor plan uploaded for floor ${floorId}`);
+      return result;
+    } catch (error) {
+      console.error(`❌ Failed to upload floor plan:`, error.message);
+      throw error;
+    }
+  }
+}
+
+// Create global instance
+const floorsService = new FloorsService(window.apiClient || apiClient);
+
+// Export for use in other modules
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = { FloorsService, floorsService };
+}
+
+if (typeof window !== "undefined") {
+  window.FloorsService = FloorsService;
+  window.floorsService = floorsService;
+}
+
+console.log("🏢 Floors service initialized");

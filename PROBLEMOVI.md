@@ -1,0 +1,3 @@
+- ~~Role of the user is not changing in the side bar under the name.~~ (fixed: currentUser now reactive)
+- ~~Critical sectors need to be visible to everyone but edit only if the user is admin or supervisor.~~ (fixed)
+- On creation of criticle section in some cases the blueprint dissappears and we dont see the map anymore and I need to refresh the website to see the blueprint again.

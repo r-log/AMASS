@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supervisor Dashboard - Electrician Work Log</title>
+
+    <!-- Vue 3 from CDN -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <!-- Tailwind CSS from CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Theme System -->
+    <link rel="stylesheet" href="theme.css">
+    <script src="theme.js"></script>
+
+    <!-- New Modular Architecture -->
+    <!-- Configuration -->
+    <script src="config/app.config.js"></script>
+
+    <!-- Core API Services -->
+    <script src="core/api/api.client.js"></script>
+    <script src="core/api/auth.service.js"></script>
+    <script src="core/api/floors.service.js"></script>
+    <script src="core/api/workLogs.service.js"></script>
+    <script src="core/api/criticalSectors.service.js"></script>
+
+    <!-- Utilities -->
+    <script src="core/utils/date.utils.js"></script>
+    <script src="core/utils/format.utils.js"></script>
+
+    <!-- Authentication Manager (uses services) -->
+    <script src="auth.js"></script>
+
+    <style>
+        body {
+            background: #0a0a0f;
+            color: #f3f4f6;
+        }
+
+        .dashboard-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 215, 0, 0.2);
+            border-radius: 12px;
+            padding: 24px;
+            transition: all 0.3s ease;
+        }
+
+        .dashboard-card:hover {
+            border-color: rgba(255, 215, 0, 0.4);
+            box-shadow: 0 4px 20px rgba(255, 215, 0, 0.1);
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(37, 99, 235, 0.05));
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card.critical {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.05));
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        .stat-card.warning {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(217, 119, 6, 0.05));
+            border-color: rgba(245, 158, 11, 0.3);
+        }
+
+        .stat-card.success {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.05));
+            border-color: rgba(16, 185, 129, 0.3);
+        }
+
+        .stat-value {
+            font-size: 36px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 8px;
+        }
+
+        .stat-label {
+            color: #9ca3af;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .worker-item {
+            background: rgba(0, 0, 0, 0.3);
+            border-left: 3px solid #10b981;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            transition: all 0.3s ease;
+        }
+
+        .worker-item:hover {
+            background: rgba(16, 185, 129, 0.1);
+            transform: translateX(4px);
+        }
+
+        .worker-item.in-critical {
+            border-left-color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .sector-item {
+            background: rgba(0, 0, 0, 0.3);
+            border-left: 3px solid #ffd700;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .sector-item:hover {
+            background: rgba(255, 215, 0, 0.1);
+            transform: translateX(4px);
+        }
+
+        .sector-item.high-priority {
+            border-left-color: #ef4444;
+        }
+
+        .sector-item.medium-priority {
+            border-left-color: #f59e0b;
+        }
+
+        .sector-item.standard-priority {
+            border-left-color: #10b981;
+        }
+
+        .priority-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .priority-high {
+            background: #ef4444;
+            color: white;
+        }
+
+        .priority-medium {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .priority-standard {
+            background: #10b981;
+            color: white;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+
+        .modal-content {
+            background: #1a1a24;
+            border: 1px solid rgba(255, 215, 0, 0.3);
+            border-radius: 12px;
+            max-width: 700px;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 24px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            color: #ffd700;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .form-input,
+        .form-select,
+        .form-textarea {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 215, 0, 0.2);
+            border-radius: 8px;
+            padding: 12px;
+            color: #f3f4f6;
+            font-size: 14px;
+        }
+
+        .form-input:focus,
+        .form-select:focus,
+        .form-textarea:focus {
+            outline: none;
+            border-color: #ffd700;
+            box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.1);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #ffd700, #f59e0b);
+            color: #000;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #f3f4f6;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        .top-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.15),
+                0 4px 15px rgba(255, 215, 0, 0.1),
+                0 2px 5px rgba(0, 0, 0, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            z-index: 1000;
+        }
+
+        .hamburger-menu {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+            background: transparent;
+            border: none;
+            color: #f3f4f6;
+            font-size: 24px;
+        }
+
+        .hamburger-menu:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .top-bar-logo {
+            height: 40px;
+            width: auto;
+        }
+
+        .top-bar-theme-toggle {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 20px;
+        }
+
+        .top-bar-theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: -300px;
+            width: 300px;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.15),
+                0 4px 15px rgba(255, 215, 0, 0.1),
+                2px 0 10px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s ease;
+            z-index: 1100;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar.open {
+            transform: translateX(300px);
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 215, 0, 0.3);
+            background: rgba(255, 215, 0, 0.05);
+        }
+
+        .sidebar-user-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .sidebar-user-avatar {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 16px;
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            padding: 20px 0;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 15px 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+            font-size: 16px;
+            color: #ffffff;
+        }
+
+        .nav-item:hover {
+            background: rgba(255, 215, 0, 0.1);
+            color: #ffd700;
+        }
+
+        .nav-item.active {
+            background: rgba(255, 215, 0, 0.15);
+            color: #ffd700;
+            border-right: 3px solid #ffd700;
+        }
+
+        .nav-item-icon {
+            margin-right: 12px;
+            font-size: 20px;
+        }
+
+        .sidebar-footer {
+            padding: 20px;
+            border-top: 1px solid rgba(255, 215, 0, 0.3);
+        }
+
+        .logout-btn {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 100%;
+            font-size: 14px;
+        }
+
+        .logout-btn:hover {
+            background: #dc2626;
+            transform: translateY(-1px);
+        }
+
+        .sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1050;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .sidebar-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .main-content {
+            margin-top: 60px;
+            min-height: calc(100vh - 60px);
+        }
+
+        .welcome-header {
+            padding: 40px 24px 20px;
+            text-align: left;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .welcome-text {
+            font-size: 42px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #ffd700, #f59e0b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+        }
+
+        .welcome-subtitle {
+            color: #9ca3af;
+            font-size: 16px;
+            margin-top: 8px;
+        }
+
+        .tab-container {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 24px;
+            border-bottom: 2px solid rgba(255, 215, 0, 0.2);
+        }
+
+        .tab-btn {
+            padding: 12px 24px;
+            background: transparent;
+            border: none;
+            color: #9ca3af;
+            font-weight: 600;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .tab-btn:hover {
+            color: #ffd700;
+        }
+
+        .tab-btn.active {
+            color: #ffd700;
+        }
+
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #ffd700;
+        }
+
+        .worker-status-online {
+            width: 10px;
+            height: 10px;
+            background: #10b981;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        .worker-status-offline {
+            width: 10px;
+            height: 10px;
+            background: #6b7280;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <!-- Hamburger Menu -->
+            <button class="hamburger-menu" @click="toggleSidebar">
+                <span class="hamburger-icon">☰</span>
+            </button>
+
+            <!-- Logo -->
+            <div class="flex items-center">
+                <img src="../assets/Logo.png" alt="Electrician Work Log System"
+                    class="theme-logo theme-logo-dark top-bar-logo">
+                <img src="../assets/Logo (light).png" alt="Electrician Work Log System"
+                    class="theme-logo theme-logo-light top-bar-logo">
+            </div>
+
+            <!-- Theme Toggle -->
+            <button id="theme-toggle" class="top-bar-theme-toggle" title="Toggle theme">
+                <span class="theme-toggle-icon">🌙</span>
+            </button>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="sidebar" :class="{ 'open': sidebarOpen }">
+            <!-- Sidebar Header -->
+            <div class="sidebar-header">
+                <div class="sidebar-user-info" v-if="currentUser">
+                    <div class="sidebar-user-avatar">{{ currentUser.full_name.charAt(0).toUpperCase() }}</div>
+                    <div>
+                        <div class="font-medium theme-text-primary">{{ currentUser.full_name }}</div>
+                        <div class="text-sm theme-text-secondary capitalize">{{ currentUser.role }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation -->
+            <div class="sidebar-nav">
+                <button class="nav-item active">
+                    <span class="nav-item-icon">📊</span>
+                    DASHBOARD
+                </button>
+                <button class="nav-item" @click="goToMap">
+                    <span class="nav-item-icon">📍</span>
+                    MAP
+                </button>
+            </div>
+
+            <!-- Sidebar Footer -->
+            <div class="sidebar-footer">
+                <button class="logout-btn" @click="logout">
+                    <span style="margin-right: 8px;">🚪</span>
+                    Logout
+                </button>
+            </div>
+        </div>
+
+        <!-- Sidebar Overlay -->
+        <div class="sidebar-overlay" :class="{ 'active': sidebarOpen }" @click="closeSidebar"></div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Welcome Header -->
+            <div class="welcome-header" v-if="currentUser">
+                <div class="welcome-text">Supervisor Dashboard</div>
+                <div class="welcome-subtitle">Monitor workers, manage critical sectors, and oversee operations</div>
+            </div>
+
+            <div style="max-width: 1400px; margin: 0 auto; padding: 24px;">
+                <!-- Overview Stats -->
+                <div
+                    style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 32px;">
+                    <div class="stat-card success">
+                        <div class="stat-value">{{ stats.activeWorkers }}</div>
+                        <div class="stat-label">👷 Active Workers Today</div>
+                    </div>
+                    <div class="stat-card warning">
+                        <div class="stat-value">{{ stats.pendingAssignments }}</div>
+                        <div class="stat-label">📋 Pending Assignments</div>
+                    </div>
+                    <div class="stat-card critical">
+                        <div class="stat-value">{{ stats.criticalSectors }}</div>
+                        <div class="stat-label">⚠️ Critical Sectors</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">{{ stats.workInCriticalAreas }}</div>
+                        <div class="stat-label">🔥 Work in Critical (24h)</div>
+                    </div>
+                </div>
+
+                <!-- Tabs -->
+                <div class="tab-container">
+                    <button class="tab-btn" :class="{ active: activeTab === 'workers' }" @click="activeTab = 'workers'">
+                        👷 Workers
+                    </button>
+                    <button class="tab-btn" :class="{ active: activeTab === 'sectors' }" @click="activeTab = 'sectors'">
+                        ⚠️ Critical Sectors
+                    </button>
+                    <button class="tab-btn" :class="{ active: activeTab === 'assignments' }"
+                        @click="activeTab = 'assignments'">
+                        📋 Assignments
+                    </button>
+                    <button class="tab-btn" :class="{ active: activeTab === 'notifications' }"
+                        @click="activeTab = 'notifications'">
+                        🔔 Notifications
+                    </button>
+                </div>
+
+                <!-- Workers Tab -->
+                <div v-if="activeTab === 'workers'">
+                    <div class="dashboard-card">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h2 style="font-size: 20px; font-weight: 700; color: #ffd700;">Worker Activity Monitor</h2>
+                        </div>
+
+                        <div v-if="workers.length === 0" style="text-align: center; padding: 40px; color: #9ca3af;">
+                            <p>No worker data available</p>
+                        </div>
+
+                        <div v-else style="display: grid; gap: 12px;">
+                            <div v-for="worker in workers" :key="worker.id"
+                                :class="['worker-item', { 'in-critical': worker.in_critical_zone }]">
+                                <div
+                                    style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                                    <div style="flex: 1;">
+                                        <div style="display: flex; align-items: center; margin-bottom: 4px;">
+                                            <span
+                                                :class="worker.is_active ? 'worker-status-online' : 'worker-status-offline'"></span>
+                                            <span style="font-weight: 600; color: #ffffff;">{{ worker.full_name
+                                                }}</span>
+                                        </div>
+                                        <div style="color: #9ca3af; font-size: 14px;">
+                                            {{ worker.current_task || 'No active task' }}
+                                        </div>
+                                    </div>
+                                    <div style="text-align: right;">
+                                        <div style="color: #60a5fa; font-size: 13px;">
+                                            {{ worker.total_logs || 0 }} logs today
+                                        </div>
+                                        <div v-if="worker.in_critical_zone"
+                                            style="color: #ef4444; font-size: 12px; font-weight: 600; margin-top: 4px;">
+                                            ⚠️ IN CRITICAL ZONE
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-if="worker.last_activity" style="color: #6b7280; font-size: 12px;">
+                                    Last activity: {{ formatDateTime(worker.last_activity) }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Critical Sectors Tab -->
+                <div v-if="activeTab === 'sectors'">
+                    <div class="dashboard-card">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h2 style="font-size: 20px; font-weight: 700; color: #ffd700;">Critical Sectors</h2>
+                            <button @click="showCreateSector = true" class="btn-primary">
+                                ➕ Create Critical Sector
+                            </button>
+                        </div>
+
+                        <div v-if="criticalSectors.length === 0"
+                            style="text-align: center; padding: 40px; color: #9ca3af;">
+                            <p style="font-size: 48px; margin-bottom: 12px;">✅</p>
+                            <p>No critical sectors defined</p>
+                        </div>
+
+                        <div v-else style="display: grid; gap: 12px;">
+                            <div v-for="sector in criticalSectors" :key="sector.id"
+                                :class="['sector-item', `${sector.priority}-priority`]" @click="editSector(sector)">
+                                <div
+                                    style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                                    <div style="flex: 1;">
+                                        <div style="font-weight: 600; color: #ffffff; margin-bottom: 4px;">
+                                            {{ sector.sector_name }}
+                                        </div>
+                                        <div style="color: #9ca3af; font-size: 14px;">
+                                            Floor: {{ sector.floor_name }}
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; gap: 8px; align-items: center;">
+                                        <span :class="['priority-badge', `priority-${sector.priority}`]">
+                                            {{ sector.priority.toUpperCase() }}
+                                        </span>
+                                        <button @click.stop="deleteSector(sector.id)" class="btn-danger">
+                                            Delete
+                                        </button>
+                                    </div>
+                                </div>
+                                <div style="color: #6b7280; font-size: 13px;">
+                                    Created: {{ formatDate(sector.created_at) }} by {{ sector.created_by_name }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Assignments Tab -->
+                <div v-if="activeTab === 'assignments'">
+                    <div class="dashboard-card">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h2 style="font-size: 20px; font-weight: 700; color: #ffd700;">Assignment Management</h2>
+                            <button @click="showCreateAssignment = true" class="btn-primary">
+                                ➕ Create Assignment
+                            </button>
+                        </div>
+
+                        <div v-if="allAssignments.length === 0"
+                            style="text-align: center; padding: 40px; color: #9ca3af;">
+                            <p>No assignments</p>
+                        </div>
+
+                        <div v-else style="display: grid; gap: 12px;">
+                            <div v-for="assignment in allAssignments" :key="assignment.id"
+                                style="background: rgba(0, 0, 0, 0.3); border-left: 3px solid #ffd700; border-radius: 8px; padding: 16px;">
+                                <div
+                                    style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                                    <div style="flex: 1;">
+                                        <div style="font-weight: 600; color: #ffffff; margin-bottom: 4px;">
+                                            {{ assignment.worker_name }} - {{ assignment.floor_name }}
+                                        </div>
+                                        <div style="color: #9ca3af; font-size: 14px;">
+                                            {{ assignment.description || 'No description' }}
+                                        </div>
+                                    </div>
+                                    <span
+                                        :style="`background: ${getStatusColor(assignment.status)}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;`">
+                                        {{ assignment.status.toUpperCase() }}
+                                    </span>
+                                </div>
+                                <div style="display: flex; gap: 16px; font-size: 13px; color: #9ca3af;">
+                                    <span>📅 Due: {{ formatDate(assignment.due_date) }}</span>
+                                    <span>Created: {{ formatDate(assignment.created_at) }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Notifications Tab -->
+                <div v-if="activeTab === 'notifications'">
+                    <div class="dashboard-card">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <h3 style="font-size: 18px; font-weight: 700; color: #ffd700;">🔔 All Notifications</h3>
+                            <button v-if="notifications.length > 0" @click="markAllAsRead"
+                                style="color: #60a5fa; font-size: 13px; cursor: pointer; background: none; border: none;">
+                                Mark all read
+                            </button>
+                        </div>
+
+                        <div v-if="notifications.length === 0"
+                            style="text-align: center; padding: 40px; color: #9ca3af;">
+                            <p>No notifications</p>
+                        </div>
+
+                        <div v-else style="max-height: 600px; overflow-y: auto;">
+                            <div v-for="notif in notifications" :key="notif.id"
+                                :style="`background: rgba(0, 0, 0, 0.3); border-left: 3px solid ${notif.type === 'critical_alert' ? '#ef4444' : '#60a5fa'}; border-radius: 8px; padding: 12px; margin-bottom: 8px; cursor: pointer; font-weight: ${notif.is_read ? 'normal' : '600'};`"
+                                @click="markAsRead(notif.id)">
+                                <div style="font-weight: 600; color: #ffffff; margin-bottom: 4px;">{{ notif.title }}
+                                </div>
+                                <div style="color: #9ca3af; font-size: 13px; margin-bottom: 4px;">{{ notif.message }}
+                                </div>
+                                <div style="color: #6b7280; font-size: 12px;">{{ formatDateTime(notif.created_at) }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Create Critical Sector Modal -->
+            <div v-if="showCreateSector" class="modal-overlay" @click.self="showCreateSector = false">
+                <div class="modal-content">
+                    <h2 style="font-size: 24px; font-weight: 700; color: #ffd700; margin-bottom: 24px;">
+                        Create Critical Sector
+                    </h2>
+
+                    <form @submit.prevent="submitCreateSector">
+                        <div class="form-group">
+                            <label class="form-label">Sector Name</label>
+                            <input type="text" v-model="newSector.sector_name" class="form-input" required
+                                placeholder="e.g., High Voltage Area">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Floor</label>
+                            <select v-model="newSector.floor_id" class="form-select" required>
+                                <option value="">Select floor</option>
+                                <option v-for="floor in floors" :key="floor.id" :value="floor.id">
+                                    {{ floor.name }}
+                                </option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Priority Level</label>
+                            <select v-model="newSector.priority" class="form-select" required>
+                                <option value="high">🔴 High Priority</option>
+                                <option value="medium">🟡 Medium Priority</option>
+                                <option value="standard">🟢 Standard</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Center X Coordinate</label>
+                            <input type="number" v-model="newSector.x_coord" step="0.01" min="0" max="1"
+                                class="form-input" required placeholder="0.5">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Center Y Coordinate</label>
+                            <input type="number" v-model="newSector.y_coord" step="0.01" min="0" max="1"
+                                class="form-input" required placeholder="0.5">
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Radius</label>
+                            <input type="number" v-model="newSector.radius" step="0.01" min="0.01" max="1"
+                                class="form-input" required placeholder="0.1">
+                        </div>
+
+                        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
+                            <button type="button" @click="showCreateSector = false"
+                                class="btn-secondary">Cancel</button>
+                            <button type="submit" class="btn-primary">Create Sector</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Create Assignment Modal -->
+            <div v-if="showCreateAssignment" class="modal-overlay" @click.self="showCreateAssignment = false">
+                <div class="modal-content">
+                    <h2 style="font-size: 24px; font-weight: 700; color: #ffd700; margin-bottom: 24px;">
+                        Create Assignment
+                    </h2>
+
+                    <form @submit.prevent="submitCreateAssignment">
+                        <div class="form-group">
+                            <label class="form-label">Worker</label>
+                            <select v-model="newAssignment.worker_id" class="form-select" required>
+                                <option value="">Select worker</option>
+                                <option v-for="worker in workers" :key="worker.id" :value="worker.id">
+                                    {{ worker.full_name }}
+                                </option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Floor</label>
+                            <select v-model="newAssignment.floor_id" class="form-select" required>
+                                <option value="">Select floor</option>
+                                <option v-for="floor in floors" :key="floor.id" :value="floor.id">
+                                    {{ floor.name }}
+                                </option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Description</label>
+                            <textarea v-model="newAssignment.description" rows="3" class="form-textarea"
+                                placeholder="Describe the assignment..." required></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Due Date</label>
+                            <input type="date" v-model="newAssignment.due_date" class="form-input" required>
+                        </div>
+
+                        <div style="display: flex; gap: 12px; justify-content: flex-end; margin-top: 24px;">
+                            <button type="button" @click="showCreateAssignment = false"
+                                class="btn-secondary">Cancel</button>
+                            <button type="submit" class="btn-primary">Create Assignment</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        createApp({
+            data() {
+                return {
+                    currentUser: null,
+                    sidebarOpen: false,
+                    activeTab: 'workers',
+                    stats: {
+                        activeWorkers: 0,
+                        pendingAssignments: 0,
+                        criticalSectors: 0,
+                        workInCriticalAreas: 0
+                    },
+                    workers: [],
+                    criticalSectors: [],
+                    allAssignments: [],
+                    notifications: [],
+                    floors: [],
+                    showCreateSector: false,
+                    showCreateAssignment: false,
+                    newSector: {
+                        sector_name: '',
+                        floor_id: '',
+                        priority: 'standard',
+                        x_coord: 0.5,
+                        y_coord: 0.5,
+                        radius: 0.1
+                    },
+                    newAssignment: {
+                        worker_id: '',
+                        floor_id: '',
+                        description: '',
+                        due_date: ''
+                    }
+                };
+            },
+            async mounted() {
+                await this.checkAuth();
+                await this.loadData();
+                this._onUserUpdated = () => this.refreshCurrentUser();
+                window.addEventListener('auth:user-updated', this._onUserUpdated);
+                // Auto-refresh every 30 seconds
+                setInterval(() => {
+                    this.loadData();
+                }, 30000);
+            },
+            beforeUnmount() {
+                window.removeEventListener('auth:user-updated', this._onUserUpdated);
+            },
+            methods: {
+                refreshCurrentUser() {
+                    this.currentUser = authManager.getUser();
+                },
+                async checkAuth() {
+                    this.currentUser = await checkAuth();
+                    if (!this.currentUser) {
+                        window.location.href = 'login.html';
+                        return;
+                    }
+                    if (this.currentUser.role === 'worker') {
+                        window.location.href = 'worker_dashboard.html';
+                    }
+                    // Supervisors and admins can access this dashboard
+                },
+                async loadData() {
+                    await Promise.all([
+                        this.loadStats(),
+                        this.loadWorkers(),
+                        this.loadCriticalSectors(),
+                        this.loadAssignments(),
+                        this.loadNotifications(),
+                        this.loadFloors()
+                    ]);
+                },
+                async loadStats() {
+                    try {
+                        const response = await fetchWithAuth('http://localhost:5000/api/dashboard/supervisor');
+                        const data = await response.json();
+
+                        this.stats.activeWorkers = data.active_workers_today || 0;
+                        this.stats.pendingAssignments = data.pending_assignments || 0;
+                        this.stats.criticalSectors = data.critical_sectors || 0;
+                        this.stats.workInCriticalAreas = data.critical_work_24h || 0;
+                    } catch (error) {
+                        console.error('Error loading stats:', error);
+                    }
+                },
+                async loadWorkers() {
+                    try {
+                        const response = await fetchWithAuth('http://localhost:5000/api/users?role=worker');
+                        const allWorkers = await response.json();
+
+                        // Get work logs for today to show activity
+                        const logsResponse = await fetchWithAuth('http://localhost:5000/api/logs');
+                        const logs = await logsResponse.json();
+                        const today = new Date().toISOString().split('T')[0];
+
+                        this.workers = allWorkers.map(worker => {
+                            const todayLogs = logs.filter(log =>
+                                log.worker_id === worker.id &&
+                                log.work_date.startsWith(today)
+                            );
+
+                            return {
+                                ...worker,
+                                total_logs: todayLogs.length,
+                                is_active: todayLogs.length > 0,
+                                last_activity: todayLogs.length > 0 ? todayLogs[0].created_at : null,
+                                current_task: null, // TODO: Get from assignments
+                                in_critical_zone: false // TODO: Implement zone detection
+                            };
+                        });
+                    } catch (error) {
+                        console.error('Error loading workers:', error);
+                    }
+                },
+                async loadCriticalSectors() {
+                    try {
+                        const response = await fetchWithAuth('http://localhost:5000/api/critical-sectors');
+                        this.criticalSectors = await response.json();
+                    } catch (error) {
+                        console.error('Error loading critical sectors:', error);
+                    }
+                },
+                async loadAssignments() {
+                    try {
+                        const response = await fetchWithAuth('http://localhost:5000/api/assignments');
+                        this.allAssignments = await response.json();
+                    } catch (error) {
+                        console.error('Error loading assignments:', error);
+                    }
+                },
+                async loadNotifications() {
+                    try {
+                        const response = await fetchWithAuth('http://localhost:5000/api/notifications');
+                        this.notifications = await response.json();
+                    } catch (error) {
+                        console.error('Error loading notifications:', error);
+                    }
+                },
+                async loadFloors() {
+                    try {
+                        const response = await fetch('http://localhost:5000/api/floors');
+                        this.floors = await response.json();
+                    } catch (error) {
+                        console.error('Error loading floors:', error);
+                    }
+                },
+                async submitCreateSector() {
+                    try {
+                        const response = await fetchWithAuth('http://localhost:5000/api/critical-sectors', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.newSector)
+                        });
+
+                        if (response.ok) {
+                            alert('Critical sector created successfully!');
+                            this.showCreateSector = false;
+                            this.newSector = {
+                                sector_name: '',
+                                floor_id: '',
+                                priority: 'standard',
+                                x_coord: 0.5,
+                                y_coord: 0.5,
+                                radius: 0.1
+                            };
+                            await this.loadData();
+                        } else {
+                            alert('Error creating critical sector');
+                        }
+                    } catch (error) {
+                        console.error('Error creating sector:', error);
+                        alert('Error creating critical sector');
+                    }
+                },
+                async deleteSector(sectorId) {
+                    if (!confirm('Are you sure you want to delete this critical sector?')) {
+                        return;
+                    }
+
+                    try {
+                        const response = await fetchWithAuth(`http://localhost:5000/api/critical-sectors/${sectorId}`, {
+                            method: 'DELETE'
+                        });
+
+                        if (response.ok) {
+                            alert('Critical sector deleted successfully!');
+                            await this.loadData();
+                        } else {
+                            alert('Error deleting critical sector');
+                        }
+                    } catch (error) {
+                        console.error('Error deleting sector:', error);
+                        alert('Error deleting critical sector');
+                    }
+                },
+                async submitCreateAssignment() {
+                    try {
+                        const response = await fetchWithAuth('http://localhost:5000/api/assignments', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.newAssignment)
+                        });
+
+                        if (response.ok) {
+                            alert('Assignment created successfully!');
+                            this.showCreateAssignment = false;
+                            this.newAssignment = {
+                                worker_id: '',
+                                floor_id: '',
+                                description: '',
+                                due_date: ''
+                            };
+                            await this.loadData();
+                        } else {
+                            alert('Error creating assignment');
+                        }
+                    } catch (error) {
+                        console.error('Error creating assignment:', error);
+                        alert('Error creating assignment');
+                    }
+                },
+                async markAsRead(notifId) {
+                    try {
+                        await fetchWithAuth(`http://localhost:5000/api/notifications/${notifId}/read`, {
+                            method: 'PUT'
+                        });
+                        await this.loadNotifications();
+                        await this.loadStats();
+                    } catch (error) {
+                        console.error('Error marking notification as read:', error);
+                    }
+                },
+                async markAllAsRead() {
+                    try {
+                        await fetchWithAuth('http://localhost:5000/api/notifications/read-all', {
+                            method: 'PUT'
+                        });
+                        await this.loadNotifications();
+                        await this.loadStats();
+                    } catch (error) {
+                        console.error('Error marking all as read:', error);
+                    }
+                },
+                editSector(sector) {
+                    console.log('Edit sector:', sector);
+                    // TODO: Implement edit modal
+                },
+                goToMap() {
+                    window.location.href = 'index.html';
+                },
+                getStatusColor(status) {
+                    const colors = {
+                        'pending': '#f59e0b',
+                        'in-progress': '#3b82f6',
+                        'completed': '#10b981'
+                    };
+                    return colors[status] || '#6b7280';
+                },
+                formatDate(dateStr) {
+                    if (!dateStr) return 'Not set';
+                    const date = new Date(dateStr);
+                    return date.toLocaleDateString();
+                },
+                formatDateTime(dateStr) {
+                    if (!dateStr) return '';
+                    const date = new Date(dateStr);
+                    return date.toLocaleString();
+                },
+                toggleSidebar() {
+                    this.sidebarOpen = !this.sidebarOpen;
+                },
+                closeSidebar() {
+                    this.sidebarOpen = false;
+                },
+                logout() {
+                    logout();
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+
+</html>
