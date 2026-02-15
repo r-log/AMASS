@@ -49,6 +49,9 @@ project-backups/
 assets/
 frontend/assets/
 
+# Session/context files - AI or IDE session state
+SESSION_CONTEXT*
+
 # Logs and temp
 *.log
 *.tmp
