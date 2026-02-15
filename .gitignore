@@ -45,6 +45,10 @@ desktop.ini
 project-backups/
 **/project-backups/
 
+# Logo and assets - may contain proprietary branding
+assets/
+frontend/assets/
+
 # Logs and temp
 *.log
 *.tmp
