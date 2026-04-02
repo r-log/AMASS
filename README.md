@@ -1,3 +1,205 @@
+# Electrician Log MVP
+
+Electrician Log MVP is a full-stack web app for tracking electrical work on floor plans.  
+It uses a Flask backend, a modular browser frontend (Vue via CDN), OpenSeadragon for map viewing, JWT auth, role-based dashboards, real-time updates, and offline mutation queueing.
+
+## What Is Implemented
+
+- JWT authentication with role-based access (`worker`, `supervisor`, `admin`)
+- Project-based workflow (projects, floor plans, worker assignment to projects)
+- Interactive floor map with work log markers
+- Critical sector management
+- Work assignments and notifications
+- Role dashboards (`worker_dashboard`, `supervisor_dashboard`, `admin_dashboard`)
+- Tile generation and tile serving for floor plans
+- Real-time updates via WebSocket (`/ws`)
+- Offline mutation queue + background sync service worker for unstable connections
+- Project delete + backup ZIP and restore from backup ZIP
+
+## Tech Stack
+
+- **Backend:** Flask, Flask-CORS, Flask-Sock, SQLite, PyJWT, bcrypt
+- **Image/tiles:** pyvips, Pillow, pdf2image
+- **Frontend:** Vue 3 (CDN), OpenSeadragon, Tailwind CSS, Chart.js
+- **Tests:** pytest
+
+## Project Structure
+
+```text
+backend/
+  run.py
+  run_migrations.py
+  requirements.txt
+  app/
+    __init__.py
+    config.py
+    api/
+      auth/
+      projects/
+      floors/
+      work_logs/
+      critical_sectors/
+      assignments/
+      notifications/
+      dashboard/
+      tiles/
+    realtime/
+      __init__.py
+    services/
+    models/
+    database/
+    utils/
+  tests/
+  utils/
+    setup_admin.py
+    user_manager.py
+    tile_generator_safe.py
+    regenerate_tiles_safe.py
+    regenerate_all_tiles_hd.py
+
+frontend/
+  login.html
+  index.html
+  worker_dashboard.html
+  supervisor_dashboard.html
+  admin_dashboard.html
+  app-openseadragon.js
+  auth.js
+  sw-offline-sync.js
+  core/
+    api/
+    realtime/
+    offline/
+    utils/
+  map/
+  components/
+  css/
+```
+
+## Quick Start
+
+### 1) Install backend dependencies
+
+```bash
+cd backend
+pip install -r requirements.txt
+```
+
+### 2) Run migrations
+
+```bash
+python run_migrations.py
+```
+
+### 3) Create admin user
+
+```bash
+python utils/setup_admin.py
+```
+
+### 4) Start the app
+
+```bash
+python run.py
+```
+
+App runs at `http://localhost:5000`.
+
+The backend also serves frontend files, so use:
+
+- [http://localhost:5000/login.html](http://localhost:5000/login.html)
+- [http://localhost:5000/index.html](http://localhost:5000/index.html)
+
+## Configuration
+
+Main backend config is in `backend/app/config.py`.
+
+Useful environment variables:
+
+- `FLASK_ENV` (`development` / `production` / `testing`)
+- `SECRET_KEY`
+- `DATABASE_PATH`
+- `FLOOR_PLANS_DIR`
+- `PROJECT_BACKUPS_DIR`
+- `CORS_ORIGINS` (comma-separated)
+- `JWT_EXPIRATION_HOURS`
+- Tile settings: `TILES_DIRECTORY`, `TILE_SIZE`, `TILE_OVERLAP`, `TILE_DPI`, `TILE_PNG_COMPRESS_LEVEL`, `TILE_MAX_LEVEL`
+
+Frontend base API URL is defined in `frontend/config/app.config.js` (`api.baseUrl`).
+
+## Main API Groups
+
+Base URL: `http://localhost:5000/api`
+
+- `/auth` - login, logout, verify, refresh, profile, users, password management
+- `/projects` - CRUD, worker assignment, restore backup, delete with backup
+- `/floors` - CRUD, upload, summaries/statistics/activity
+- `/work-logs` - CRUD, dashboard, export, spatial helpers, bulk update
+- `/critical-sectors` - CRUD + statistics/check/export/bulk update
+- `/assignments` - CRUD + status/statistics/worker queries/bulk create
+- `/notifications` - list/read/read-all/clear/statistics
+- `/dashboard` - supervisor dashboard aggregates
+- `/tiles` - generate/regenerate/status/clear/list/serve/batch
+
+## Real-Time Updates
+
+- WebSocket endpoint: `/ws`
+- Authenticated via JWT token in query string (`?token=...`)
+- Frontend client: `frontend/core/realtime/ws-client.js`
+- Backend broadcast hub: `backend/app/realtime/__init__.py`
+
+## Offline Support
+
+- Offline queue stores mutation requests (POST/PUT/PATCH/DELETE) in IndexedDB
+- Queue replays when API is reachable again
+- Background Sync integration via `frontend/sw-offline-sync.js`
+- Core module: `frontend/core/offline/offline-queue.js`
+
+## User Roles
+
+- `worker`: creates/updates own work logs, sees worker dashboard
+- `supervisor`: project/floor operations, assignments, critical sectors, supervision dashboards
+- `admin`: full access, administration dashboard and management actions
+
+## Development & Testing
+
+Run tests:
+
+```bash
+cd backend
+python -m pytest tests/
+```
+
+Current test files:
+
+- `backend/tests/test_auth.py`
+- `backend/tests/test_project_delete_backup.py`
+
+## Common Commands
+
+Create/manage users:
+
+```bash
+cd backend
+python utils/user_manager.py
+```
+
+Regenerate tiles:
+
+```bash
+cd backend
+python utils/regenerate_tiles_safe.py
+python utils/regenerate_all_tiles_hd.py
+```
+
+## Notes
+
+- The repository may contain additional planning docs like `PLAN.md` and `PROBLEMOVI.md`.
+- This README is intentionally focused on implemented architecture and practical setup/use.
+
+## License
+
+MIT
 # Electrician Work Log System - Refactored Architecture
 
 A professional web application for tracking electrician work logs across multiple floors of a building using high-performance OpenSeadragon tile-based floor plan visualization with JWT authentication and role-based access control.
@@ -35,12 +237,14 @@ backend/
 │   │   ├── floors/            # Floor routes
 │   │   ├── critical_sectors/  # Critical sector routes
 │   │   ├── assignments/       # Work assignment routes
+│   │   ├── dashboard/         # Supervisor stats (uses DashboardService)
 │   │   ├── notifications/     # Notification routes
 │   │   └── tiles/             # Tile generation routes
 │   ├── services/              # Business logic layer
 │   │   ├── auth_service.py
 │   │   ├── work_log_service.py
 │   │   ├── floor_service.py
+│   │   ├── dashboard_service.py   # Supervisor stats
 │   │   └── ...
 │   ├── models/                # Data models
 │   │   ├── user.py
@@ -51,7 +255,8 @@ backend/
 │   │   ├── connection.py
 │   │   └── migrations.py
 │   └── utils/                 # Utilities
-│       ├── decorators.py      # Auth decorators
+│       ├── decorators.py      # Auth decorators (_extract_and_validate_token)
+│       ├── result.py          # ServiceResult dataclass
 │       ├── validators.py
 │       └── helpers.py
 ├── utils/                     # CLI utilities
@@ -74,7 +279,7 @@ frontend/
 ├── login.html                 # Login page
 ├── worker_dashboard.html      # Worker dashboard
 ├── supervisor_dashboard.html  # Supervisor dashboard
-├── app-openseadragon.js      # Main Vue.js app (NEW)
+├── app-openseadragon.js       # Main Vue.js app (uses MarkerManager)
 ├── auth.js                    # Authentication manager
 ├── login.js                   # Login page logic
 ├── theme.js                   # Theme switcher
@@ -92,8 +297,13 @@ frontend/
 │   └── utils/                # Utility functions
 │       ├── date.utils.js
 │       └── format.utils.js
-└── components/               # Vue components
+├── css/
+│   └── dashboard-shared.css  # Shared dashboard styles
+├── map/
+│   └── marker-manager.js    # OpenSeadragon marker handling
+└── components/
     ├── critical-sector-drawer.js
+    ├── dashboard-components.js   # StatCard, shared components
     └── sector-integration-methods.js
 ```
 
@@ -408,6 +618,10 @@ cd backend
 python -m pytest tests/
 ```
 
+### Feature Tracking
+
+See [FEATURES.md](FEATURES.md) for implemented features (with how they work), future roadmap, and code simplification opportunities. Last updated: Feb 2025.
+
 ## 🐛 Troubleshooting
 
 ### Backend won't start
@@ -474,6 +688,8 @@ Install all: `pip install -r requirements.txt`
 - Chart.js - Data visualization
 
 ## 🔮 Future Enhancements
+
+See [FEATURES.md](FEATURES.md) for the full roadmap. Planned items:
 
 - [ ] Real-time updates with WebSockets
 - [ ] Progressive Web App (PWA) support

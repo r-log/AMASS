@@ -2,7 +2,10 @@
 Critical sector service for managing critical areas and safety zones.
 """
 
+import logging
 from typing import Dict, Any, Optional, List, Tuple
+
+logger = logging.getLogger(__name__)
 
 from app.models.critical_sector import CriticalSector
 from app.models.user import User
@@ -127,57 +130,41 @@ class CriticalSectorService:
             return False, None, f"Failed to update critical sector: {str(e)}"
 
     @staticmethod
-    def delete_critical_sector(sector_id: int, user_id: int) -> Tuple[bool, str]:
+    def delete_critical_sector(sector_id: int, user_id: int) -> Tuple[bool, str, Optional[int]]:
         """
         Delete (deactivate) a critical sector.
 
         Returns:
-            Tuple of (success, message)
+            Tuple of (success, message, floor_id or None)
         """
         try:
-            print(
-                f"\n[DELETE DEBUG] Starting delete for sector_id={sector_id}, user_id={user_id}")
+            logger.debug("Starting delete for sector_id=%d, user_id=%d", sector_id, user_id)
 
             # Check permissions
             user = User.find_by_id(user_id)
-            print(
-                f"[DELETE DEBUG] User.find_by_id({user_id}) returned: {user}")
-
             if not user:
-                print(f"[DELETE DEBUG] ❌ User not found")
-                return False, "User not found"
+                logger.debug("User not found")
+                return False, "User not found", None
 
             if not user.can_manage_critical_sectors():
-                print(
-                    f"[DELETE DEBUG] ❌ User {user.username} (role={user.role}) lacks permissions")
-                return False, "Insufficient permissions to delete critical sectors"
-
-            print(f"[DELETE DEBUG] ✓ User {user.username} has permissions")
+                logger.debug("User %s (role=%s) lacks permissions", user.username, user.role)
+                return False, "Insufficient permissions to delete critical sectors", None
 
             sector = CriticalSector.find_by_id(sector_id)
-            print(
-                f"[DELETE DEBUG] CriticalSector.find_by_id({sector_id}) returned: {sector}")
-
             if not sector:
-                print(f"[DELETE DEBUG] ❌ Sector not found")
-                return False, "Critical sector not found"
+                logger.debug("Sector not found")
+                return False, "Critical sector not found", None
 
-            print(f"[DELETE DEBUG] ✓ Sector found: {sector.sector_name}")
-            print(f"[DELETE DEBUG] Calling sector.deactivate()...")
-
+            floor_id = sector.floor_id
             # Deactivate sector
             sector.deactivate()
+            logger.debug("Delete successful: %s", sector.sector_name)
 
-            print(f"[DELETE DEBUG] ✓ Deactivate completed")
-            print(f"[DELETE DEBUG] ✓ Delete successful!\n")
-
-            return True, "Critical sector deleted successfully"
+            return True, "Critical sector deleted successfully", floor_id
 
         except Exception as e:
-            print(f"[DELETE DEBUG] ❌ Exception: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return False, f"Failed to delete critical sector: {str(e)}"
+            logger.error("Failed to delete critical sector: %s", e, exc_info=True)
+            return False, f"Failed to delete critical sector: {str(e)}", None
 
     @staticmethod
     def get_critical_sectors(floor_id: Optional[int] = None, project_id: Optional[int] = None,
@@ -193,7 +180,7 @@ class CriticalSectorService:
             return CriticalSector.find_all_active()
 
         except Exception as e:
-            print(f"Error getting critical sectors: {e}")
+            logger.error("Error getting critical sectors: %s", e, exc_info=True)
             return []
 
     @staticmethod
@@ -202,7 +189,7 @@ class CriticalSectorService:
         try:
             return CriticalSector.find_by_priority(priority, floor_id)
         except Exception as e:
-            print(f"Error getting sectors by priority: {e}")
+            logger.error("Error getting sectors by priority: %s", e, exc_info=True)
             return []
 
     @staticmethod
@@ -219,7 +206,7 @@ class CriticalSectorService:
             return len(sectors) > 0, sectors
 
         except Exception as e:
-            print(f"Error checking critical areas: {e}")
+            logger.error("Error checking critical areas: %s", e, exc_info=True)
             return False, []
 
     @staticmethod
@@ -265,7 +252,7 @@ class CriticalSectorService:
             return stats
 
         except Exception as e:
-            print(f"Error getting critical sector statistics: {e}")
+            logger.error("Error getting critical sector statistics: %s", e, exc_info=True)
             return {}
 
     @staticmethod
@@ -356,7 +343,7 @@ class CriticalSectorService:
             return critical_work
 
         except Exception as e:
-            print(f"Error getting work in critical sectors: {e}")
+            logger.error("Error getting work in critical sectors: %s", e, exc_info=True)
             return []
 
     @staticmethod
@@ -373,9 +360,14 @@ class CriticalSectorService:
             if user_ids:
                 Notification.create_critical_alert(
                     user_ids, message, work_log_id)
+                try:
+                    from app.realtime import broadcast_to_rooms
+                    broadcast_to_rooms('notification_new', {'work_log_id': work_log_id}, rooms=[f'user:{uid}' for uid in user_ids])
+                except Exception:
+                    pass
 
         except Exception as e:
-            print(f"Error creating sector alert: {e}")
+            logger.error("Error creating sector alert: %s", e, exc_info=True)
 
     @staticmethod
     def check_overlapping_sectors(floor_id: int, x: float, y: float, radius: float,
@@ -398,7 +390,7 @@ class CriticalSectorService:
             return overlapping
 
         except Exception as e:
-            print(f"Error checking overlapping sectors: {e}")
+            logger.error("Error checking overlapping sectors: %s", e, exc_info=True)
             return []
 
     @staticmethod
@@ -506,4 +498,4 @@ class CriticalSectorService:
                 )
 
         except Exception as e:
-            print(f"Error sending sector creation notifications: {e}")
+            logger.error("Error sending sector creation notifications: %s", e, exc_info=True)

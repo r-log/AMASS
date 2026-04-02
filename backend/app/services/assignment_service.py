@@ -2,8 +2,11 @@
 Assignment service for managing work assignments and task allocation.
 """
 
+import logging
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import date, timedelta
+
+logger = logging.getLogger(__name__)
 
 from app.models.assignment import Assignment
 from app.models.user import User
@@ -140,7 +143,7 @@ class AssignmentService:
             return AssignmentService.get_user_assignments(
                 user_id, status, include_assigned_by=(user_role in ['admin', 'supervisor']))
         except Exception as e:
-            print(f"Error getting assignments: {e}")
+            logger.error("Error getting assignments: %s", e, exc_info=True)
             return []
 
     @staticmethod
@@ -173,7 +176,7 @@ class AssignmentService:
             return unique_assignments
 
         except Exception as e:
-            print(f"Error getting user assignments: {e}")
+            logger.error("Error getting user assignments: %s", e, exc_info=True)
             return []
 
     @staticmethod
@@ -192,7 +195,7 @@ class AssignmentService:
             return assignments
 
         except Exception as e:
-            print(f"Error getting assignments by status: {e}")
+            logger.error("Error getting assignments by status: %s", e, exc_info=True)
             return []
 
     @staticmethod
@@ -211,7 +214,7 @@ class AssignmentService:
             return overdue_assignments
 
         except Exception as e:
-            print(f"Error getting overdue assignments: {e}")
+            logger.error("Error getting overdue assignments: %s", e, exc_info=True)
             return []
 
     @staticmethod
@@ -230,7 +233,7 @@ class AssignmentService:
             return due_soon
 
         except Exception as e:
-            print(f"Error getting assignments due soon: {e}")
+            logger.error("Error getting assignments due soon: %s", e, exc_info=True)
             return []
 
     @staticmethod
@@ -332,7 +335,7 @@ class AssignmentService:
                 }
 
         except Exception as e:
-            print(f"Error getting assignment statistics: {e}")
+            logger.error("Error getting assignment statistics: %s", e, exc_info=True)
             return {}
 
     @staticmethod
@@ -373,9 +376,14 @@ class AssignmentService:
 
             Notification.create_assignment_notification(
                 assignee.id, message, assignment.id)
+            try:
+                from app.realtime import broadcast_to_rooms
+                broadcast_to_rooms('notification_new', {'assignment_id': assignment.id}, rooms=[f'user:{assignee.id}'])
+            except Exception:
+                pass
 
         except Exception as e:
-            print(f"Error sending assignment creation notification: {e}")
+            logger.error("Error sending assignment creation notification: %s", e, exc_info=True)
 
     @staticmethod
     def _notify_status_change(assignment: Assignment, old_status: str, new_status: str, changed_by: User) -> None:
@@ -392,6 +400,11 @@ class AssignmentService:
                     message,
                     assignment.id
                 )
+                try:
+                    from app.realtime import broadcast_to_rooms
+                    broadcast_to_rooms('notification_new', {'assignment_id': assignment.id}, rooms=[f'user:{assignment.assigned_by}'])
+                except Exception:
+                    pass
 
             # Notify the assignee if status changed by someone else
             elif changed_by.id != assignment.assigned_to:
@@ -404,9 +417,14 @@ class AssignmentService:
                     message,
                     assignment.id
                 )
+                try:
+                    from app.realtime import broadcast_to_rooms
+                    broadcast_to_rooms('notification_new', {'assignment_id': assignment.id}, rooms=[f'user:{assignment.assigned_to}'])
+                except Exception:
+                    pass
 
         except Exception as e:
-            print(f"Error sending status change notification: {e}")
+            logger.error("Error sending status change notification: %s", e, exc_info=True)
 
     @staticmethod
     def send_due_date_reminders() -> Tuple[bool, str]:

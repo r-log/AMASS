@@ -145,8 +145,25 @@ def table_exists(table_name: str) -> bool:
     return cursor.fetchone() is not None
 
 
+_ALLOWED_TABLE_NAMES = frozenset({
+    'users', 'projects', 'project_user_assignments', 'floors',
+    'work_logs', 'critical_sectors', 'work_assignments',
+    'notifications', 'cable_routes', 'work_templates', 'migrations',
+})
+
+
+def _validate_identifier(name: str) -> str:
+    """Validate that a SQL identifier contains only safe characters."""
+    import re
+    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name):
+        raise ValueError(f"Invalid SQL identifier: {name!r}")
+    return name
+
+
 def get_table_columns(table_name: str) -> list:
     """Get column information for a table."""
+    if table_name not in _ALLOWED_TABLE_NAMES:
+        raise ValueError(f"Unknown table: {table_name!r}")
     db = get_db()
     cursor = db.execute(f"PRAGMA table_info({table_name})")
     rows = cursor.fetchall()
@@ -155,7 +172,12 @@ def get_table_columns(table_name: str) -> list:
 
 def add_column_if_not_exists(table_name: str, column_definition: str):
     """Add a column to a table if it doesn't already exist."""
-    column_name = column_definition.split()[0]
+    if table_name not in _ALLOWED_TABLE_NAMES:
+        raise ValueError(f"Unknown table: {table_name!r}")
+    # Validate each word in the column definition is a safe identifier or SQL keyword
+    parts = column_definition.split()
+    _validate_identifier(parts[0])  # column name must be safe
+    column_name = parts[0]
     existing_columns = get_table_columns(table_name)
 
     if column_name not in existing_columns:

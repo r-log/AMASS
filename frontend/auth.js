@@ -71,6 +71,11 @@ class AuthManager {
       localStorage.setItem(config.auth.userDataKey, JSON.stringify(user));
     }
 
+    // Connect WebSocket for real-time updates
+    if (window.RealtimeClient && token) {
+      window.RealtimeClient.connect(token);
+    }
+
     this._notifyUserUpdate();
   }
 
@@ -85,6 +90,12 @@ class AuthManager {
     localStorage.removeItem(config.auth.userDataKey);
     sessionStorage.removeItem(config.auth.tokenKey);
     sessionStorage.removeItem(config.auth.userDataKey);
+
+    // Disconnect WebSocket
+    if (window.RealtimeClient) {
+      window.RealtimeClient.disconnect();
+    }
+
     this._notifyUserUpdate();
   }
 
@@ -149,10 +160,9 @@ class AuthManager {
       ...options.headers,
     };
 
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
+    const response = await (window.offlineQueue
+      ? window.offlineQueue.fetch(url, { ...options, headers })
+      : fetch(url, { ...options, headers }));
 
     // Check if token is expired vs insufficient permissions
     if (response.status === 401 || response.status === 403) {
@@ -243,6 +253,10 @@ window.addEventListener("DOMContentLoaded", () => {
   if (window.apiClient && authManager) {
     authManager.setupApiClient();
     console.log("✅ API Client linked to AuthManager");
+  }
+  // Connect WebSocket when we have stored auth (page refresh)
+  if (window.RealtimeClient && authManager.isAuthenticated()) {
+    window.RealtimeClient.connect(authManager.getToken());
   }
 });
 

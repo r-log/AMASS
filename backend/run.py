@@ -14,11 +14,16 @@ def main():
     app = create_app(config_env)
 
     # Initialize tile generator (keeping compatibility with existing system)
+    max_level = app.config.get('TILE_MAX_LEVEL', 12)
     app.tile_generator = SafeTileGenerator(
-        tiles_dir=app.config.get('TILES_DIR', 'tiles'),
+        tiles_dir=app.config.get('TILES_DIRECTORY') or app.config.get('TILES_DIR', 'tiles'),
         tile_size=app.config.get('TILE_SIZE', 512),
         overlap=app.config.get('TILE_OVERLAP', 1),
-        dpi=app.config.get('TILE_DPI', 300)
+        dpi=app.config.get('TILE_DPI', 300),
+        compress_level=app.config.get('TILE_PNG_COMPRESS_LEVEL', 9),
+        max_level=max_level if max_level > 0 else None,
+        tile_format=app.config.get('TILE_FORMAT', 'webp'),
+        quality=app.config.get('TILE_QUALITY', 85),
     )
     app.config['TILE_GENERATOR'] = app.tile_generator
 

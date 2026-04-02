@@ -14,11 +14,16 @@
 
     <!-- Theme System -->
     <link rel="stylesheet" href="theme.css">
+    <link rel="stylesheet" href="css/dashboard-shared.css">
     <script src="theme.js" defer></script>
 
     <!-- New Modular Architecture -->
     <!-- Configuration -->
     <script src="config/app.config.js" defer></script>
+
+    <!-- Offline queue (must load before api.client) -->
+    <script src="core/offline/offline-queue.js" defer></script>
+    <script src="core/offline/offline-banner.js" defer></script>
 
     <!-- Core API Services -->
     <script src="core/api/api.client.js" defer></script>
@@ -34,37 +39,14 @@
     <script src="core/utils/date.utils.js" defer></script>
     <script src="core/utils/format.utils.js" defer></script>
 
+    <!-- Real-time WebSocket client -->
+    <script src="core/realtime/ws-client.js" defer></script>
+
     <!-- Authentication Manager (uses services) -->
     <script src="auth.js" defer></script>
 
     <style>
-        body {
-            background: #0a0a0f;
-            color: #f3f4f6;
-        }
-
-        .dashboard-card {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 215, 0, 0.2);
-            border-radius: 12px;
-            padding: 24px;
-            transition: all 0.3s ease;
-        }
-
-        .dashboard-card:hover {
-            border-color: rgba(255, 215, 0, 0.4);
-            box-shadow: 0 4px 20px rgba(255, 215, 0, 0.1);
-        }
-
-        .stat-card {
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(37, 99, 235, 0.05));
-            border: 1px solid rgba(59, 130, 246, 0.3);
-            border-radius: 12px;
-            padding: 20px;
-            position: relative;
-            overflow: hidden;
-        }
-
+        /* Dashboard-specific styles (shared layout in css/dashboard-shared.css) */
         .task-item {
             background: rgba(0, 0, 0, 0.3);
             border-left: 3px solid #ffd700;
@@ -145,288 +127,7 @@
             font-weight: 600;
         }
 
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.8);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 2000;
-            padding: 20px;
-            cursor: pointer;
-        }
-
-        .modal-content {
-            background: #1a1a24;
-            border: 1px solid rgba(255, 215, 0, 0.3);
-            border-radius: 12px;
-            max-width: 600px;
-            width: 100%;
-            max-height: 90vh;
-            overflow-y: auto;
-            padding: 24px;
-            cursor: default;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-label {
-            display: block;
-            color: #ffd700;
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-
-        .form-input,
-        .form-select,
-        .form-textarea {
-            width: 100%;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 215, 0, 0.2);
-            border-radius: 8px;
-            padding: 12px;
-            color: #f3f4f6;
-            font-size: 14px;
-        }
-
-        .form-input:focus,
-        .form-select:focus,
-        .form-textarea:focus {
-            outline: none;
-            border-color: #ffd700;
-            box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.1);
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #ffd700, #f59e0b);
-            color: #000;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            color: #f3f4f6;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-
-        .top-bar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 60px;
-            background: rgba(0, 0, 0, 0.95);
-            backdrop-filter: blur(10px);
-            box-shadow: 0 0 20px rgba(255, 215, 0, 0.15),
-                0 4px 15px rgba(255, 215, 0, 0.1),
-                0 2px 5px rgba(0, 0, 0, 0.2);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 20px;
-            z-index: 1000;
-        }
-
-        .hamburger-menu {
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            border-radius: 8px;
-            transition: all 0.3s ease;
-            background: transparent;
-            border: none;
-            color: #f3f4f6;
-            font-size: 24px;
-        }
-
-        .hamburger-menu:hover {
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .top-bar-logo {
-            height: 40px;
-            width: auto;
-        }
-
-        .top-bar-theme-toggle {
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            border: none;
-            background: transparent;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 20px;
-        }
-
-        .top-bar-theme-toggle:hover {
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .sidebar {
-            position: fixed;
-            top: 0;
-            left: -300px;
-            width: 300px;
-            height: 100vh;
-            background: rgba(0, 0, 0, 0.95);
-            backdrop-filter: blur(10px);
-            box-shadow: 0 0 20px rgba(255, 215, 0, 0.15),
-                0 4px 15px rgba(255, 215, 0, 0.1),
-                2px 0 10px rgba(0, 0, 0, 0.2);
-            transition: transform 0.3s ease;
-            z-index: 1100;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .sidebar.open {
-            transform: translateX(300px);
-        }
-
-        .sidebar-header {
-            padding: 20px;
-            border-bottom: 1px solid rgba(255, 215, 0, 0.3);
-            background: rgba(255, 215, 0, 0.05);
-        }
-
-        .sidebar-user-info {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .sidebar-user-avatar {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            font-size: 16px;
-        }
-
-        .sidebar-nav {
-            flex: 1;
-            padding: 20px 0;
-        }
-
-        .nav-item {
-            display: flex;
-            align-items: center;
-            padding: 15px 20px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border: none;
-            background: none;
-            width: 100%;
-            text-align: left;
-            font-size: 16px;
-            color: #ffffff;
-        }
-
-        .nav-item:hover {
-            background: rgba(255, 215, 0, 0.1);
-            color: #ffd700;
-        }
-
-        .nav-item.active {
-            background: rgba(255, 215, 0, 0.15);
-            color: #ffd700;
-            border-right: 3px solid #ffd700;
-        }
-
-        .nav-item-icon {
-            margin-right: 12px;
-            font-size: 20px;
-        }
-
-        .sidebar-footer {
-            padding: 20px;
-            border-top: 1px solid rgba(255, 215, 0, 0.3);
-        }
-
-        .logout-btn {
-            display: flex;
-            align-items: center;
-            padding: 12px 16px;
-            background: #ef4444;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            width: 100%;
-            font-size: 14px;
-        }
-
-        .logout-btn:hover {
-            background: #dc2626;
-            transform: translateY(-1px);
-        }
-
-        .sidebar-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 1050;
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.3s ease;
-        }
-
-        .sidebar-overlay.active {
-            opacity: 1;
-            visibility: visible;
-        }
-
-        .main-content {
-            margin-top: 60px;
-            min-height: calc(100vh - 60px);
-        }
-
-        .welcome-header {
-            padding: 40px 24px 20px;
-            text-align: left;
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-
         .welcome-text {
-            font-size: 42px;
-            font-weight: 700;
-            background: linear-gradient(135deg, #ffd700, #f59e0b);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 8px;
             overflow: hidden;
             border-right: 3px solid #ffd700;
             white-space: nowrap;
@@ -857,10 +558,22 @@
                     }
                 };
                 window.addEventListener('keydown', this._onEscape);
+                // Real-time WebSocket updates for assignments and notifications
+                if (window.RealtimeClient && this.currentUser) {
+                    const uid = this.currentUser.user_id || this.currentUser.id;
+                    window.RealtimeClient.subscribe(`user:${uid}`);
+                    ['assignment_created', 'assignment_updated', 'assignment_deleted', 'notification_new'].forEach(ev => {
+                        const h = () => this.loadData();
+                        window.addEventListener(`realtime:${ev}`, h);
+                        this._realtimeHandlers = this._realtimeHandlers || [];
+                        this._realtimeHandlers.push({ event: `realtime:${ev}`, fn: h });
+                    });
+                }
             },
             beforeUnmount() {
                 window.removeEventListener('auth:user-updated', this._onUserUpdated);
                 window.removeEventListener('keydown', this._onEscape);
+                (this._realtimeHandlers || []).forEach(({ event, fn }) => window.removeEventListener(event, fn));
             },
             methods: {
                 refreshCurrentUser() {

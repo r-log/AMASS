@@ -29,13 +29,18 @@ def create_app(config_name: str = None) -> Flask:
     config_class = get_config(config_name)
     app.config.from_object(config_class)
 
+    # Default request size limit (16 MB) — can be overridden in config classes
+    app.config.setdefault('MAX_CONTENT_LENGTH', 16 * 1024 * 1024)
+
     # Disable strict slashes to prevent redirect issues with CORS preflight
     app.url_map.strict_slashes = False
 
-    # Initialize CORS with proper configuration
+    # Initialize CORS — credentials require explicit origins (no wildcard)
+    cors_origins = app.config.get('CORS_ORIGINS', ['*'])
+    uses_credentials = '*' not in cors_origins
     CORS(app,
-         origins=app.config.get('CORS_ORIGINS', ['*']),
-         supports_credentials=True,
+         origins=cors_origins,
+         supports_credentials=uses_credentials,
          allow_headers=['Content-Type', 'Authorization'],
          methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'])
 
@@ -51,6 +56,10 @@ def create_app(config_name: str = None) -> Flask:
     # Serve frontend (HTML, JS, CSS, assets) so everything works on port 5000
     _add_frontend_routes(app)
 
+    # Real-time WebSocket
+    from app.realtime import register_websocket
+    register_websocket(app)
+
     return app
 
 
@@ -58,7 +67,8 @@ def _add_frontend_routes(app: Flask) -> None:
     """Serve frontend static files so the app works at localhost:5000."""
 
     CACHEABLE_EXTENSIONS = ('.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2')
-    STATIC_CACHE_MAX_AGE = 3600  # 1 hour for static assets
+    # No cache in debug mode so code changes take effect immediately
+    STATIC_CACHE_MAX_AGE = 0 if app.debug else 3600
 
     @app.route('/')
     def index():

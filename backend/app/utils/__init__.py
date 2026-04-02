@@ -13,17 +13,11 @@ from .validators import (
     validate_floor_data,
     validate_cable_route
 )
-from .helpers import (
-    calculate_distance,
-    format_datetime,
-    paginate_results,
-    generate_unique_id,
-    create_success_response,
-    create_error_response,
-    sanitize_input
-)
+from .result import ServiceResult
 
 __all__ = [
+    # Result
+    'ServiceResult',
     # Decorators
     'token_required',
     'admin_required',
@@ -38,12 +32,4 @@ __all__ = [
     'validate_user_data',
     'validate_floor_data',
     'validate_cable_route',
-    # Helpers
-    'calculate_distance',
-    'format_datetime',
-    'paginate_results',
-    'generate_unique_id',
-    'create_success_response',
-    'create_error_response',
-    'sanitize_input'
 ]

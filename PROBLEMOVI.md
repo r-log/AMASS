@@ -1,2 +1,0 @@
-- ~~Role of the user is not changing in the side bar under the name.~~ (fixed: currentUser now reactive)
-- ~~Critical sectors need to be visible to everyone but edit only if the user is admin or supervisor.~~ (fixed)

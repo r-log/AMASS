@@ -43,6 +43,7 @@ class CriticalSector:
             height REAL DEFAULT 0.1,
             type TEXT DEFAULT 'rectangle',
             priority TEXT DEFAULT 'standard',
+            points TEXT,
             created_by INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

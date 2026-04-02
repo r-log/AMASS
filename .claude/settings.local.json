@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(find:*)",
+      "Bash(xargs basename:*)",
+      "Bash(grep -rn \"src=\\\\|href=\" /c/Users/Roko/Documents/PYTHON/AMAS/electrician-log-mvp/frontend/*.html)",
+      "Bash(grep -h \"src=\" /c/Users/Roko/Documents/PYTHON/AMAS/electrician-log-mvp/frontend/*.html)"
+    ]
+  }
+}

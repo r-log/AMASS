@@ -35,6 +35,7 @@ venv/
 # IDE and OS
 .idea/
 .vscode/
+.cursor/
 *.swp
 *.swo
 .DS_Store
@@ -51,6 +52,11 @@ frontend/assets/
 
 # Session/context files - AI or IDE session state
 SESSION_CONTEXT*
+FEATURES.md
+CLAUDE.md
+PLAN.md
+PROBLEMOVI.md
+
 
 # Logs and temp
 *.log

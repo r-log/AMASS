@@ -128,6 +128,23 @@ class TilesService {
   }
 
   /**
+   * Optimize tiles (recompress PNGs, remove empty dirs). Admin only.
+   * @param {Object} options - { floor_id?: number, recompress?: boolean, compress_level?: number }
+   */
+  async optimize(options = {}) {
+    try {
+      const response = await this.client.post("/tiles/optimize", options, {
+        timeout: 300000, // 5 min - tile recompression can take a long time
+      });
+      console.log("✅ Tile optimization completed:", response.result);
+      return response;
+    } catch (error) {
+      console.error("❌ Failed to optimize tiles:", error.message);
+      throw error;
+    }
+  }
+
+  /**
    * Check if tiles exist for all floors
    */
   async checkAllStatuses() {

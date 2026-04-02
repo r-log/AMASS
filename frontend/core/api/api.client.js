@@ -99,17 +99,18 @@ class ApiClient {
   async request(endpoint, options = {}, retryCount = 0) {
     const url = this.buildUrl(endpoint);
     const headers = this.buildHeaders(options.headers);
+    const timeoutMs = options.timeout ?? this.timeout;
 
     try {
       // Create abort controller for timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-      const response = await fetch(url, {
-        ...options,
-        headers,
-        signal: controller.signal,
-      });
+      const fetchOptions = { ...options, headers, signal: controller.signal };
+      if (timeoutMs) fetchOptions.timeout = timeoutMs;
+      const response = await (window.offlineQueue
+        ? window.offlineQueue.fetch(url, fetchOptions)
+        : fetch(url, fetchOptions));
 
       clearTimeout(timeoutId);
 
@@ -185,11 +186,15 @@ class ApiClient {
 
   /**
    * POST request
+   * @param {string} endpoint - API endpoint
+   * @param {Object} data - Request body
+   * @param {Object} requestOptions - Optional overrides (e.g. { timeout: 300000 })
    */
-  async post(endpoint, data = {}) {
+  async post(endpoint, data = {}, requestOptions = {}) {
     return this.request(endpoint, {
       method: "POST",
       body: JSON.stringify(data),
+      ...requestOptions,
     });
   }
 

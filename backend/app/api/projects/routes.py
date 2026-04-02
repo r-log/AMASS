@@ -160,8 +160,7 @@ def restore_project():
             tmp_path.unlink(missing_ok=True)
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        current_app.logger.error("Failed to restore project: %s", e, exc_info=True)
         return jsonify({'error': f'Failed to restore project: {str(e)}'}), 500
 
 
@@ -184,6 +183,5 @@ def delete_project(project_id):
             }), 200
         return jsonify({'error': message}), 400
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        current_app.logger.error("Failed to delete project: %s", e, exc_info=True)
         return jsonify({'error': f'Failed to delete project: {str(e)}'}), 500

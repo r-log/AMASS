@@ -2,27 +2,28 @@
 Work log service for managing electrical work logs and related operations.
 """
 
-from typing import Dict, Any, Optional, List, Tuple
+import logging
+from typing import Dict, Any, Optional, List
 from datetime import datetime, date
 
 from app.models.work_log import WorkLog
+from app.utils.result import ServiceResult
 from app.models.user import User
 from app.models.floor import Floor
 from app.models.critical_sector import CriticalSector
 from app.models.cable_route import CableRoute
 from app.models.notification import Notification
 
+logger = logging.getLogger(__name__)
+
 
 class WorkLogService:
     """Service for managing work logs and related business logic."""
 
     @staticmethod
-    def create_work_log(data: Dict[str, Any], user_id: int) -> Tuple[bool, Optional[WorkLog], str]:
+    def create_work_log(data: Dict[str, Any], user_id: int) -> ServiceResult:
         """
         Create a new work log with validation and business logic.
-
-        Returns:
-            Tuple of (success, work_log_object, message)
         """
         try:
             # Validate required fields
@@ -30,17 +31,17 @@ class WorkLogService:
                                'y_coord', 'work_date', 'work_type']
             for field in required_fields:
                 if field not in data or data[field] is None:
-                    return False, None, f"Missing required field: {field}"
+                    return ServiceResult.fail(f"Missing required field: {field}")
 
             # Validate floor exists
             floor = Floor.find_by_id(data['floor_id'])
             if not floor:
-                return False, None, "Floor not found"
+                return ServiceResult.fail("Floor not found")
 
             # Get user info
             user = User.find_by_id(user_id)
             if not user:
-                return False, None, "User not found"
+                return ServiceResult.fail("User not found")
 
             # Create work log
             work_log = WorkLog(
@@ -83,31 +84,26 @@ class WorkLogService:
             if work_log.id:
                 WorkLogService._check_critical_sector_alerts(work_log)
 
-            return True, work_log, "Work log created successfully"
+            return ServiceResult.ok(work_log, "Work log created successfully")
 
         except Exception as e:
-            return False, None, f"Failed to create work log: {str(e)}"
+            return ServiceResult.fail(f"Failed to create work log: {str(e)}")
 
     @staticmethod
-    def update_work_log(log_id: int, data: Dict[str, Any], user_id: int) -> Tuple[bool, Optional[WorkLog], str]:
-        """
-        Update an existing work log with permission checks.
-
-        Returns:
-            Tuple of (success, work_log_object, message)
-        """
+    def update_work_log(log_id: int, data: Dict[str, Any], user_id: int) -> ServiceResult:
+        """Update an existing work log with permission checks."""
         try:
             work_log = WorkLog.find_by_id(log_id)
             if not work_log:
-                return False, None, "Work log not found"
+                return ServiceResult.fail("Work log not found")
 
             user = User.find_by_id(user_id)
             if not user:
-                return False, None, "User not found"
+                return ServiceResult.fail("User not found")
 
             # Check permissions
             if not user.can_edit_any_log() and work_log.worker_id != user_id:
-                return False, None, "Insufficient permissions to edit this work log"
+                return ServiceResult.fail("Insufficient permissions to edit this work log")
 
             # Update fields
             updateable_fields = [
@@ -142,44 +138,39 @@ class WorkLogService:
 
                     cable_route.save()
 
-            return True, work_log, "Work log updated successfully"
+            return ServiceResult.ok(work_log, "Work log updated successfully")
 
         except Exception as e:
-            return False, None, f"Failed to update work log: {str(e)}"
+            return ServiceResult.fail(f"Failed to update work log: {str(e)}")
 
     @staticmethod
-    def delete_work_log(log_id: int, user_id: int) -> Tuple[bool, str]:
-        """
-        Delete a work log with permission checks.
-
-        Returns:
-            Tuple of (success, message)
-        """
+    def delete_work_log(log_id: int, user_id: int) -> ServiceResult:
+        """Delete a work log with permission checks."""
         try:
             work_log = WorkLog.find_by_id(log_id)
             if not work_log:
-                return False, "Work log not found"
+                return ServiceResult.fail("Work log not found")
 
             user = User.find_by_id(user_id)
             if not user:
-                return False, "User not found"
+                return ServiceResult.fail("User not found")
 
             # Check permissions
             if not user.can_delete_any_log() and work_log.worker_id != user_id:
-                return False, "Insufficient permissions to delete this work log"
+                return ServiceResult.fail("Insufficient permissions to delete this work log")
 
             # Delete associated cable route first
             cable_route = CableRoute.find_by_work_log_id(work_log.id)
             if cable_route:
                 cable_route.delete()
 
-            # Delete the work log
+            floor_id = work_log.floor_id
             work_log.delete()
 
-            return True, "Work log deleted successfully"
+            return ServiceResult.ok(data={'floor_id': floor_id}, message="Work log deleted successfully")
 
         except Exception as e:
-            return False, f"Failed to delete work log: {str(e)}"
+            return ServiceResult.fail(f"Failed to delete work log: {str(e)}")
 
     @staticmethod
     def get_work_logs(filters: Dict[str, Any] = None, user_id: Optional[int] = None,
@@ -214,29 +205,24 @@ class WorkLogService:
                 return WorkLog.find_all(limit, offset)
 
         except Exception as e:
-            print(f"Error getting work logs: {e}")
+            logger.error("Error getting work logs: %s", e)
             return []
 
     @staticmethod
-    def get_work_log_with_details(log_id: int, user_id: int) -> Tuple[bool, Optional[Dict[str, Any]], str]:
-        """
-        Get detailed work log information including cable routes.
-
-        Returns:
-            Tuple of (success, work_log_data, message)
-        """
+    def get_work_log_with_details(log_id: int, user_id: int) -> ServiceResult:
+        """Get detailed work log information including cable routes."""
         try:
             work_log = WorkLog.find_by_id(log_id)
             if not work_log:
-                return False, None, "Work log not found"
+                return ServiceResult.fail("Work log not found")
 
             user = User.find_by_id(user_id)
             if not user:
-                return False, None, "User not found"
+                return ServiceResult.fail("User not found")
 
             # Check permissions for workers
             if user.is_worker() and work_log.worker_id != user_id:
-                return False, None, "Insufficient permissions to view this work log"
+                return ServiceResult.fail("Insufficient permissions to view this work log")
 
             # Get work log data
             log_data = work_log.to_dict()
@@ -251,10 +237,10 @@ class WorkLogService:
             if floor:
                 log_data['floor_name'] = floor.name
 
-            return True, log_data, "Work log retrieved successfully"
+            return ServiceResult.ok(log_data, "Work log retrieved successfully")
 
         except Exception as e:
-            return False, None, f"Failed to get work log details: {str(e)}"
+            return ServiceResult.fail(f"Failed to get work log details: {str(e)}")
 
     @staticmethod
     def get_dashboard_stats(user_id: Optional[int] = None) -> Dict[str, Any]:
@@ -292,7 +278,7 @@ class WorkLogService:
             return stats
 
         except Exception as e:
-            print(f"Error getting dashboard stats: {e}")
+            logger.error("Error getting dashboard stats: %s", e)
             return {}
 
     @staticmethod
@@ -352,21 +338,15 @@ class WorkLogService:
         return issues
 
     @staticmethod
-    def export_work_logs(filters: Dict[str, Any] = None, format: str = 'json') -> Tuple[bool, Any, str]:
-        """
-        Export work logs in specified format.
-
-        Returns:
-            Tuple of (success, data, message)
-        """
+    def export_work_logs(filters: Dict[str, Any] = None, format: str = 'json') -> ServiceResult:
+        """Export work logs in specified format."""
         try:
             work_logs = WorkLogService.get_work_logs(filters)
 
             if format.lower() == 'json':
                 data = [log.to_dict() for log in work_logs]
-                return True, data, f"Exported {len(data)} work logs"
+                return ServiceResult.ok(data, f"Exported {len(data)} work logs")
             elif format.lower() == 'csv':
-                # Convert to CSV format
                 import csv
                 import io
 
@@ -378,12 +358,12 @@ class WorkLogService:
                     for log in work_logs:
                         writer.writerow(log.to_dict())
 
-                return True, output.getvalue(), f"Exported {len(work_logs)} work logs as CSV"
+                return ServiceResult.ok(output.getvalue(), f"Exported {len(work_logs)} work logs as CSV")
             else:
-                return False, None, f"Unsupported export format: {format}"
+                return ServiceResult.fail(f"Unsupported export format: {format}")
 
         except Exception as e:
-            return False, None, f"Export failed: {str(e)}"
+            return ServiceResult.fail(f"Export failed: {str(e)}")
 
     @staticmethod
     def _check_critical_sector_alerts(work_log: WorkLog) -> None:
@@ -407,9 +387,14 @@ class WorkLogService:
                     if user_ids:
                         Notification.create_critical_alert(
                             user_ids, message, work_log.id)
+                        try:
+                            from app.realtime import broadcast_to_rooms
+                            broadcast_to_rooms('notification_new', {'work_log_id': work_log.id}, rooms=[f'user:{uid}' for uid in user_ids])
+                        except Exception:
+                            pass
 
         except Exception as e:
-            print(f"Error checking critical sector alerts: {e}")
+            logger.error("Error checking critical sector alerts: %s", e)
 
     @staticmethod
     def get_work_logs_near_point(floor_id: int, x: float, y: float, radius: float = 0.05) -> List[WorkLog]:
@@ -429,40 +414,33 @@ class WorkLogService:
             return nearby_logs
 
         except Exception as e:
-            print(f"Error finding nearby work logs: {e}")
+            logger.error("Error finding nearby work logs: %s", e)
             return []
 
     @staticmethod
-    def bulk_update_work_logs(log_ids: List[int], updates: Dict[str, Any], user_id: int) -> Tuple[bool, str]:
-        """
-        Bulk update multiple work logs.
-
-        Returns:
-            Tuple of (success, message)
-        """
+    def bulk_update_work_logs(log_ids: List[int], updates: Dict[str, Any], user_id: int) -> ServiceResult:
+        """Bulk update multiple work logs."""
         try:
             user = User.find_by_id(user_id)
             if not user:
-                return False, "User not found"
+                return ServiceResult.fail("User not found")
 
             if not user.can_edit_any_log():
-                return False, "Insufficient permissions for bulk updates"
+                return ServiceResult.fail("Insufficient permissions for bulk updates")
 
             updated_count = 0
             errors = []
 
             for log_id in log_ids:
-                success, _, message = WorkLogService.update_work_log(
-                    log_id, updates, user_id)
-                if success:
+                result = WorkLogService.update_work_log(log_id, updates, user_id)
+                if result.success:
                     updated_count += 1
                 else:
-                    errors.append(f"Log {log_id}: {message}")
+                    errors.append(f"Log {log_id}: {result.message}")
 
             if errors:
-                return True, f"Updated {updated_count} logs with {len(errors)} errors: {'; '.join(errors[:3])}"
-            else:
-                return True, f"Successfully updated {updated_count} work logs"
+                return ServiceResult.ok(message=f"Updated {updated_count} logs with {len(errors)} errors: {'; '.join(errors[:3])}")
+            return ServiceResult.ok(message=f"Successfully updated {updated_count} work logs")
 
         except Exception as e:
-            return False, f"Bulk update failed: {str(e)}"
+            return ServiceResult.fail(f"Bulk update failed: {str(e)}")

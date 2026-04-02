@@ -2,71 +2,45 @@
 Authentication API routes.
 """
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from app.services.auth_service import AuthService
-from app.utils.decorators import token_required, admin_required, validate_json_request
+from app.utils.decorators import token_required, admin_required, validate_json_request, rate_limit
 
 auth_bp = Blueprint('auth', __name__)
 
 
 @auth_bp.route('/login', methods=['POST'])
+@rate_limit(max_requests=10, window_minutes=5)
 @validate_json_request
 def login():
     """User login endpoint."""
     try:
-        print(f"\n{'#'*60}")
-        print(f"[LOGIN ROUTE] Received login request")
-
         data = request.get_json()
-        print(f"[LOGIN ROUTE] Request data keys: {list(data.keys())}")
-
         username = data.get('username')
         password = data.get('password')
-        print(
-            f"[LOGIN ROUTE] Username: '{username}', Password provided: {bool(password)}")
 
         if not username or not password:
-            print(f"[LOGIN ROUTE] ❌ Missing credentials")
             return jsonify({'error': 'Username and password are required'}), 400
 
-        print(f"[LOGIN ROUTE] Calling AuthService.authenticate_user...")
         success, user, message = AuthService.authenticate_user(
             username, password)
-        print(
-            f"[LOGIN ROUTE] Authentication result: success={success}, message='{message}'")
 
         if success:
-            print(f"[LOGIN ROUTE] ✓ Authentication successful, generating token...")
             token = AuthService.generate_token(user)
-            print(f"[LOGIN ROUTE] ✓ Token generated")
-
             session_data = AuthService.create_session_data(user)
-            print(f"[LOGIN ROUTE] ✓ Session data created")
 
-            response_data = {
+            return jsonify({
                 'success': True,
                 'message': 'Login successful',
                 'token': token,
                 'user': session_data
-            }
-            print(
-                f"[LOGIN ROUTE] ✓ Sending 200 response with data: {list(response_data.keys())}")
-            print(f"{'#'*60}\n")
-
-            return jsonify(response_data), 200
+            }), 200
         else:
-            print(f"[LOGIN ROUTE] ❌ Authentication failed: {message}")
-            print(f"[LOGIN ROUTE] Sending 401 response")
-            print(f"{'#'*60}\n")
             return jsonify({'error': message}), 401
 
     except Exception as e:
-        print(f"[LOGIN ROUTE] ❌ Exception occurred: {str(e)}")
-        print(f"[LOGIN ROUTE] Exception type: {type(e)}")
-        import traceback
-        traceback.print_exc()
-        print(f"{'#'*60}\n")
-        return jsonify({'error': f'Login failed: {str(e)}'}), 500
+        current_app.logger.error(f"Login failed: {e}")
+        return jsonify({'error': 'Login failed'}), 500
 
 
 @auth_bp.route('/logout', methods=['POST'])

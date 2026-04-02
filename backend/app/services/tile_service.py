@@ -2,13 +2,18 @@
 Tile service for managing floor plan tiles and tile generation.
 """
 
+import logging
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 import os
 import shutil
 
+from PIL import Image
+
 from app.models.floor import Floor
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 
 class TileService:
@@ -70,27 +75,17 @@ class TileService:
             Tuple of (success, result_data, message)
         """
         try:
-            print(f"\n{'*'*60}")
-            print(
-                f"[TILE GEN] Starting tile generation for floor ID: {floor_id}")
-            print(f"[TILE GEN] Force regenerate: {force_regenerate}")
+            logger.info("Tile generation started for floor %d (force=%s)", floor_id, force_regenerate)
 
             floor = Floor.find_by_id(floor_id)
             if not floor:
-                print(f"[TILE GEN] ❌ Floor {floor_id} not found")
                 return False, {}, "Floor not found"
-
-            print(f"[TILE GEN] Floor found: {floor.name}")
-            print(f"[TILE GEN] PDF path: {floor.image_path}")
 
             # Check if tiles already exist and not forcing regeneration
             if not force_regenerate:
-                print(f"[TILE GEN] Checking for existing tiles...")
                 status = TileService.get_tile_status(floor_id, tiles_dir)
                 if status['tiles_exist']:
-                    print(f"[TILE GEN] ✓ Tiles already exist (using cache)")
-                    print(f"[TILE GEN]   DZI path: {status['dzi_path']}")
-                    print(f"{'*'*60}\n")
+                    logger.info("Tiles already exist for floor %d (cached)", floor_id)
                     return True, {
                         'success': True,
                         'message': 'Tiles already exist for this floor',
@@ -99,18 +94,12 @@ class TileService:
                         'tile_info': status.get('tile_info', {})
                     }, "Tiles already exist"
 
-            # Get PDF path
             pdf_path = Path(floor_plans_dir) / floor.image_path
-            print(f"[TILE GEN] Full PDF path: {pdf_path}")
-
             if not pdf_path.exists():
-                print(f"[TILE GEN] ❌ PDF file not found: {pdf_path}")
                 return False, {}, f"PDF file not found: {floor.image_path}"
 
-            print(f"[TILE GEN] ✓ PDF file exists, starting generation...")
-            print(f"[TILE GEN] Output directory: {tiles_dir}/floor-{floor_id}")
+            logger.info("Generating tiles for floor %d (%s)", floor_id, floor.name)
 
-            # Generate tiles using the tile generator
             result = tile_generator.process_pdf_safely(
                 str(pdf_path),
                 floor_id,
@@ -118,15 +107,8 @@ class TileService:
             )
 
             if result['success']:
-                print(f"[TILE GEN] ✓ Tile generation successful!")
-                print(f"[TILE GEN]   Total tiles: {result.get('total_tiles')}")
-                print(f"[TILE GEN]   Zoom levels: {result.get('levels')}")
-                print(
-                    f"[TILE GEN]   Original size: {result.get('original_width')}x{result.get('original_height')}")
-                print(
-                    f"[TILE GEN]   DZI path: /api/tiles/{floor_id}/floor-{floor_id}.dzi")
-                print(f"{'*'*60}\n")
-
+                logger.info("Tiles generated for floor %d: %d tiles, %d levels",
+                            floor_id, result.get('total_tiles', 0), result.get('levels', 0))
                 return True, {
                     'success': True,
                     'message': f'Tiles generated for {floor.name}',
@@ -138,19 +120,14 @@ class TileService:
                     }
                 }, "Tiles generated successfully"
             else:
-                print(
-                    f"[TILE GEN] ❌ Tile generation failed: {result.get('error')}")
-                print(f"{'*'*60}\n")
+                logger.error("Tile generation failed for floor %d: %s", floor_id, result.get('error'))
                 return False, {
                     'error': result.get('error'),
                     'success': False
                 }, result.get('error', 'Unknown error during tile generation')
 
         except Exception as e:
-            print(f"[TILE GEN] ❌ Exception during tile generation: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            print(f"{'*'*60}\n")
+            logger.error("Tile generation exception for floor %d: %s", floor_id, e, exc_info=True)
             return False, {}, f"Failed to generate tiles: {str(e)}"
 
     @staticmethod
@@ -250,7 +227,7 @@ class TileService:
             return None
 
         except Exception as e:
-            print(f"Error getting tile file path: {e}")
+            logger.error("Error getting tile file path: %s", e)
             return None
 
     @staticmethod
@@ -267,7 +244,7 @@ class TileService:
             return statuses
 
         except Exception as e:
-            print(f"Error getting tile statuses: {e}")
+            logger.error("Error getting tile statuses: %s", e)
             return []
 
     @staticmethod
@@ -322,49 +299,122 @@ class TileService:
             }
 
         except Exception as e:
-            print(f"Error getting tile statistics: {e}")
+            logger.error("Error getting tile statistics: %s", e)
             return {}
 
     @staticmethod
-    def optimize_tiles(tiles_dir: str, user_id: int) -> Tuple[bool, str]:
+    def _recompress_png_tiles(tiles_path: Path, compress_level: int = 9) -> Tuple[int, int]:
         """
-        Optimize tiles by removing unused zoom levels or compressing.
+        Recompress PNG tiles with higher compression level (lossless).
 
         Returns:
-            Tuple of (success, message)
+            Tuple of (recompressed_count, bytes_saved)
+        """
+        recompressed = 0
+        bytes_saved = 0
+
+        for root, _, files in os.walk(tiles_path):
+            for f in files:
+                if not f.lower().endswith('.png'):
+                    continue
+                file_path = Path(root) / f
+                try:
+                    orig_size = file_path.stat().st_size
+                    img = Image.open(file_path)
+                    if img.mode == 'RGBA':
+                        img.load()
+                    img.save(
+                        file_path,
+                        'PNG',
+                        optimize=True,
+                        compress_level=compress_level
+                    )
+                    img.close()
+                    new_size = file_path.stat().st_size
+                    recompressed += 1
+                    bytes_saved += max(0, orig_size - new_size)
+                except Exception as e:
+                    logger.warning("Failed to recompress %s: %s", file_path, e)
+
+        return recompressed, bytes_saved
+
+    @staticmethod
+    def optimize_tiles(
+        tiles_dir: str,
+        user_id: int,
+        floor_id: Optional[int] = None,
+        recompress: bool = True,
+        compress_level: int = 9,
+    ) -> Tuple[bool, Dict[str, Any], str]:
+        """
+        Optimize tiles by recompressing PNGs and removing empty directories.
+
+        Args:
+            tiles_dir: Base tiles directory
+            user_id: User ID for permission check
+            floor_id: Optional floor ID to optimize only one floor; None = all floors
+            recompress: Whether to recompress PNG tiles
+            compress_level: PNG compression level (0-9, 9 = max)
+
+        Returns:
+            Tuple of (success, result_dict, message)
         """
         try:
-            # Check permissions
             user = User.find_by_id(user_id)
             if not user or not user.can_manage_users():
-                return False, "Insufficient permissions to optimize tiles"
-
-            # This is a placeholder for tile optimization logic
-            # In a real implementation, you might:
-            # 1. Analyze tile usage statistics
-            # 2. Remove unused deep zoom levels
-            # 3. Compress tile images
-            # 4. Remove duplicate tiles
+                return False, {}, "Insufficient permissions to optimize tiles"
 
             tiles_path = Path(tiles_dir)
             if not tiles_path.exists():
-                return False, "Tiles directory not found"
+                return False, {}, "Tiles directory not found"
 
-            # Simple optimization: remove empty directories
-            removed_count = 0
-            for floor_dir in tiles_path.iterdir():
+            total_recompressed = 0
+            total_bytes_saved = 0
+            removed_dirs = 0
+            floors_processed = 0
+
+            floor_dirs = []
+            if floor_id is not None:
+                floor_dir = tiles_path / f'floor-{floor_id}'
                 if floor_dir.is_dir():
-                    for root, dirs, files in os.walk(floor_dir, topdown=False):
-                        for dir_name in dirs:
-                            dir_path = Path(root) / dir_name
-                            if dir_path.is_dir() and not any(dir_path.iterdir()):
-                                dir_path.rmdir()
-                                removed_count += 1
+                    floor_dirs.append(floor_dir)
+            else:
+                for d in tiles_path.iterdir():
+                    if d.is_dir() and d.name.startswith('floor-'):
+                        floor_dirs.append(d)
 
-            return True, f"Optimization completed. Removed {removed_count} empty directories."
+            for floor_dir in floor_dirs:
+                floors_processed += 1
+                if recompress:
+                    rc, saved = TileService._recompress_png_tiles(floor_dir, compress_level)
+                    total_recompressed += rc
+                    total_bytes_saved += saved
+
+                for root, dirs, files in os.walk(floor_dir, topdown=False):
+                    for dir_name in dirs:
+                        dir_path = Path(root) / dir_name
+                        if dir_path.is_dir() and not any(dir_path.iterdir()):
+                            dir_path.rmdir()
+                            removed_dirs += 1
+
+            result = {
+                'removed_empty_dirs': removed_dirs,
+                'recompressed_count': total_recompressed,
+                'bytes_saved': total_bytes_saved,
+                'floors_processed': floors_processed,
+            }
+
+            msg_parts = []
+            if total_recompressed > 0:
+                msg_parts.append(f"Recompressed {total_recompressed} tiles, saved {total_bytes_saved // 1024} KB")
+            if removed_dirs > 0:
+                msg_parts.append(f"Removed {removed_dirs} empty directories")
+            message = "Optimization completed. " + "; ".join(msg_parts) if msg_parts else "Nothing to optimize."
+
+            return True, result, message
 
         except Exception as e:
-            return False, f"Optimization failed: {str(e)}"
+            return False, {}, f"Optimization failed: {str(e)}"
 
     @staticmethod
     def _get_tile_info(tiles_path: Path) -> Dict[str, Any]:
@@ -402,7 +452,7 @@ class TileService:
             return info
 
         except Exception as e:
-            print(f"Error getting tile info: {e}")
+            logger.error("Error getting tile info: %s", e)
             return {}
 
     @staticmethod
@@ -417,7 +467,7 @@ class TileService:
                         total_size += file_path.stat().st_size
             return total_size
         except Exception as e:
-            print(f"Error calculating directory size: {e}")
+            logger.error("Error calculating directory size: %s", e)
             return 0
 
     @staticmethod
@@ -486,7 +536,7 @@ class TileService:
             return exists, info
 
         except Exception as e:
-            print(f"Error checking tiles exist: {e}")
+            logger.error("Error checking tiles exist: %s", e)
             return False, {'error': str(e)}
 
     @staticmethod
@@ -516,7 +566,7 @@ class TileService:
                 return None
 
         except Exception as e:
-            print(f"Error getting tile config: {e}")
+            logger.error("Error getting tile config: %s", e)
             return None
 
     @staticmethod
@@ -554,7 +604,7 @@ class TileService:
             return success, message
 
         except Exception as e:
-            print(f"Error generating tiles: {e}")
+            logger.error("Error generating tiles: %s", e)
             return False, f"Failed to generate tiles: {str(e)}"
 
     @staticmethod
@@ -592,7 +642,7 @@ class TileService:
             return success, message
 
         except Exception as e:
-            print(f"Error regenerating tiles: {e}")
+            logger.error("Error regenerating tiles: %s", e)
             return False, f"Failed to regenerate tiles: {str(e)}"
 
     @staticmethod
@@ -616,7 +666,7 @@ class TileService:
                 return True, "No tiles found to clear"
 
         except Exception as e:
-            print(f"Error clearing tile cache: {e}")
+            logger.error("Error clearing tile cache: %s", e)
             return False, f"Failed to clear tile cache: {str(e)}"
 
     @staticmethod
@@ -643,12 +693,12 @@ class TileService:
                         shutil.rmtree(floor_dir)
                         cleared_count += 1
                     except Exception as e:
-                        print(f"Error clearing {floor_dir}: {e}")
+                        logger.error("Error clearing %s: %s", floor_dir, e)
 
             return True, f"Cleared tile cache for {cleared_count} floor(s)"
 
         except Exception as e:
-            print(f"Error clearing all tile caches: {e}")
+            logger.error("Error clearing all tile caches: %s", e)
             return False, f"Failed to clear tile caches: {str(e)}"
 
     @staticmethod
@@ -666,5 +716,5 @@ class TileService:
             return TileService.get_all_tile_statuses(tiles_dir)
 
         except Exception as e:
-            print(f"Error listing tiles: {e}")
+            logger.error("Error listing tiles: %s", e)
             return []

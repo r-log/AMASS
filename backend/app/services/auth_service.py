@@ -4,6 +4,8 @@ Handles user authentication, token management, and access control.
 """
 
 import jwt as pyjwt
+import threading
+import time
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, Tuple
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -11,6 +13,34 @@ from flask import current_app
 
 from app.models.user import User
 from app.models.notification import Notification
+
+
+class _TokenBlacklist:
+    """In-memory token blacklist with automatic expiry cleanup."""
+
+    def __init__(self):
+        self._blacklisted: Dict[str, float] = {}  # token -> expiry timestamp
+        self._lock = threading.Lock()
+
+    def add(self, token: str, expires_at: float) -> None:
+        with self._lock:
+            self._blacklisted[token] = expires_at
+
+    def is_blacklisted(self, token: str) -> bool:
+        with self._lock:
+            return token in self._blacklisted
+
+    def cleanup(self) -> None:
+        """Remove expired entries to prevent unbounded memory growth."""
+        now = time.time()
+        with self._lock:
+            self._blacklisted = {
+                t: exp for t, exp in self._blacklisted.items() if exp > now
+            }
+
+
+# Module-level singleton — survives across requests within the same process
+_token_blacklist = _TokenBlacklist()
 
 
 class AuthService:
@@ -25,63 +55,33 @@ class AuthService:
             Tuple of (success, user_object, message)
         """
         try:
-            print(f"\n{'='*60}")
-            print(f"[AUTH DEBUG] Login attempt for username: '{username}'")
+            current_app.logger.debug("Login attempt for username: %s", username)
 
-            # Find user by username
             user = User.find_by_username(username)
-            print(f"[AUTH DEBUG] User found in database: {user is not None}")
-
             if not user:
-                print(f"[AUTH DEBUG] ❌ User not found")
+                current_app.logger.debug("User not found: %s", username)
                 return False, None, "Invalid username or password"
-
-            print(
-                f"[AUTH DEBUG] User ID: {user.id}, Full name: {user.full_name}, Role: {user.role}")
-            print(f"[AUTH DEBUG] User is_active: {user.is_active}")
 
             if not user.is_active:
-                print(f"[AUTH DEBUG] ❌ Account is deactivated")
+                current_app.logger.info("Login attempt on deactivated account: %s", username)
                 return False, None, "Account is deactivated"
 
-            # Verify password
-            print(
-                f"[AUTH DEBUG] Password hash from DB (first 30 chars): {user.password_hash[:30]}...")
-            print(
-                f"[AUTH DEBUG] Password hash method: {user.password_hash.split('$')[0] if '$' in user.password_hash else 'unknown'}")
-
-            password_valid = check_password_hash(user.password_hash, password)
-            print(
-                f"[AUTH DEBUG] Password verification result: {password_valid}")
-
-            if not password_valid:
-                print(f"[AUTH DEBUG] ❌ Password verification failed")
+            if not check_password_hash(user.password_hash, password):
+                current_app.logger.info("Failed login attempt for: %s", username)
                 return False, None, "Invalid username or password"
 
-            print(f"[AUTH DEBUG] ✓ Password verified successfully")
-
-            # Update last login
             user.update_last_login()
-            print(f"[AUTH DEBUG] ✓ Last login updated")
-
-            print(f"[AUTH DEBUG] ✓ Authentication successful!")
-            print(f"{'='*60}\n")
+            current_app.logger.info("Successful login: %s (id=%s)", username, user.id)
             return True, user, "Authentication successful"
 
         except Exception as e:
-            print(f"[AUTH DEBUG] ❌ Exception during authentication: {str(e)}")
-            print(f"[AUTH DEBUG] Exception type: {type(e)}")
-            import traceback
-            traceback.print_exc()
+            current_app.logger.error("Authentication error for %s: %s", username, e, exc_info=True)
             return False, None, f"Authentication error: {str(e)}"
 
     @staticmethod
     def generate_token(user: User) -> str:
         """Generate JWT token for authenticated user."""
         try:
-            print(
-                f"[TOKEN DEBUG] Generating JWT token for user: {user.username} (ID: {user.id})")
-
             payload = {
                 'user_id': user.id,
                 'username': user.username,
@@ -90,28 +90,18 @@ class AuthService:
                 'exp': datetime.utcnow() + timedelta(hours=current_app.config.get('JWT_EXPIRATION_HOURS', 24)),
                 'iat': datetime.utcnow()
             }
-            print(f"[TOKEN DEBUG] Payload created: {payload}")
-
             token = pyjwt.encode(
                 payload,
                 current_app.config['SECRET_KEY'],
                 algorithm='HS256'
             )
-            print(f"[TOKEN DEBUG] Token encoded, type: {type(token)}")
-
             # PyJWT 2.x returns string directly, no need to decode
             final_token = token if isinstance(
                 token, str) else token.decode('utf-8')
-            print(
-                f"[TOKEN DEBUG] ✓ Token generated successfully (length: {len(final_token)})")
-            print(f"[TOKEN DEBUG] Token preview: {final_token[:50]}...")
             return final_token
 
         except Exception as e:
-            print(f"[TOKEN DEBUG] ❌ Token generation failed: {str(e)}")
-            print(f"[TOKEN DEBUG] Exception type: {type(e)}")
-            import traceback
-            traceback.print_exc()
+            current_app.logger.error("Token generation failed: %s", e, exc_info=True)
             raise ValueError(f"Token generation failed: {str(e)}")
 
     @staticmethod
@@ -123,6 +113,10 @@ class AuthService:
             Tuple of (success, payload, message)
         """
         try:
+            # Check blacklist before expensive decode
+            if _token_blacklist.is_blacklisted(token):
+                return False, None, "Token has been revoked"
+
             payload = pyjwt.decode(
                 token,
                 current_app.config['SECRET_KEY'],
@@ -403,15 +397,27 @@ class AuthService:
     @staticmethod
     def logout_user(token: str) -> Tuple[bool, str]:
         """
-        Logout user (currently just validates token exists).
-        In a production system, you might maintain a token blacklist.
+        Logout user by blacklisting the token until it expires.
 
         Returns:
             Tuple of (success, message)
         """
-        success, payload, message = AuthService.verify_token(token)
+        try:
+            # Decode without full verification so we can blacklist even
+            # if the user was just deactivated
+            payload = pyjwt.decode(
+                token,
+                current_app.config['SECRET_KEY'],
+                algorithms=['HS256']
+            )
+            expires_at = payload.get('exp', time.time())
+            _token_blacklist.add(token, float(expires_at))
 
-        if success:
+            # Periodic cleanup to prevent unbounded growth
+            _token_blacklist.cleanup()
+
             return True, "Logged out successfully"
-        else:
-            return False, message
+        except pyjwt.ExpiredSignatureError:
+            return True, "Token already expired"
+        except pyjwt.InvalidTokenError:
+            return False, "Invalid token"

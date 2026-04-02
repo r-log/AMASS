@@ -2,9 +2,9 @@
 Tiles API routes.
 """
 
-from flask import Blueprint, request, jsonify, send_from_directory
+from flask import Blueprint, request, jsonify, send_from_directory, current_app
 from app.services.tile_service import TileService
-from app.utils.decorators import token_required, supervisor_required
+from app.utils.decorators import token_required, supervisor_required, admin_required
 import os
 
 tiles_bp = Blueprint('tiles', __name__)
@@ -130,6 +130,36 @@ def list_available_tiles():
         return jsonify({'error': f'Failed to list tiles: {str(e)}'}), 500
 
 
+@tiles_bp.route('/optimize', methods=['POST'])
+@token_required
+@admin_required
+def optimize_tiles_route():
+    """Optimize tiles (recompress PNGs, remove empty dirs). Admin only."""
+    try:
+        data = request.get_json(silent=True) or {}
+        floor_id = data.get('floor_id')
+        recompress = data.get('recompress', True)
+        compress_level = data.get('compress_level', 9)
+
+        tiles_dir = current_app.config.get('TILES_DIRECTORY', 'tiles')
+        user_id = request.current_user.get('user_id')
+
+        success, result, message = TileService.optimize_tiles(
+            tiles_dir=tiles_dir,
+            user_id=user_id,
+            floor_id=floor_id,
+            recompress=recompress,
+            compress_level=min(9, max(0, compress_level)),
+        )
+
+        if success:
+            return jsonify({'message': message, 'success': True, 'result': result}), 200
+        return jsonify({'error': message, 'success': False}), 400
+
+    except Exception as e:
+        return jsonify({'error': f'Failed to optimize tiles: {str(e)}', 'success': False}), 500
+
+
 @tiles_bp.route('/<int:floor_id>/<path:tile_path>')
 @token_required
 def serve_tile(floor_id, tile_path):
@@ -159,19 +189,24 @@ def serve_tile(floor_id, tile_path):
         filename = os.path.basename(full_path)
 
         # Serve the file with appropriate MIME type and cache headers
-        if filename.endswith('.dzi'):
-            response = send_from_directory(directory, filename, mimetype='application/xml')
+        _MIME = {'.dzi': 'application/xml', '.webp': 'image/webp',
+                 '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg'}
+        ext = os.path.splitext(filename)[1].lower()
+        mimetype = _MIME.get(ext)
+
+        response = send_from_directory(directory, filename, mimetype=mimetype)
+
+        if ext == '.dzi':
+            response.headers['Cache-Control'] = 'public, max-age=3600'
         else:
-            response = send_from_directory(directory, filename)
-        response.headers['Cache-Control'] = 'public, max-age=86400'
+            # Tiles are immutable once generated — cache for 1 year
+            response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
         return response
 
     except FileNotFoundError:
         return jsonify({'error': f'Tile not found: {tile_path}'}), 404
     except Exception as e:
-        print(f"Error serving tile: {e}")
-        import traceback
-        traceback.print_exc()
+        current_app.logger.error("Error serving tile: %s", e)
         return jsonify({'error': f'Failed to serve tile: {str(e)}'}), 500
 
 
@@ -213,3 +248,37 @@ def batch_generate_tiles():
 
     except Exception as e:
         return jsonify({'error': f'Failed to batch generate tiles: {str(e)}'}), 500
+
+
+@tiles_bp.route('/progress/<int:floor_id>', methods=['GET'])
+@token_required
+def get_tile_progress(floor_id):
+    """Get tile generation progress for a single floor."""
+    from utils.tile_generator_safe import SafeTileGenerator
+
+    progress = SafeTileGenerator.get_progress(floor_id)
+    if progress:
+        return jsonify(progress), 200
+    return jsonify({'status': 'idle', 'percent': 0}), 200
+
+
+@tiles_bp.route('/progress/batch', methods=['GET'])
+@token_required
+def get_tile_progress_batch():
+    """Get tile generation progress for multiple floors at once.
+    Query: ?floor_ids=1,2,3
+    """
+    from utils.tile_generator_safe import SafeTileGenerator
+
+    raw = request.args.get('floor_ids', '')
+    try:
+        floor_ids = [int(x.strip()) for x in raw.split(',') if x.strip()]
+    except ValueError:
+        return jsonify({'error': 'floor_ids must be comma-separated integers'}), 400
+
+    progress = SafeTileGenerator.get_batch_progress(floor_ids)
+    # Return all requested IDs, with idle default for unknown ones
+    result = {}
+    for fid in floor_ids:
+        result[str(fid)] = progress.get(fid, {'status': 'idle', 'percent': 0})
+    return jsonify(result), 200

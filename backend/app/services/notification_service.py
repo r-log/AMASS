@@ -2,7 +2,10 @@
 Notification service for managing system notifications and alerts.
 """
 
+import logging
 from typing import Dict, Any, Optional, List, Tuple
+
+logger = logging.getLogger(__name__)
 
 from app.models.notification import Notification
 from app.models.user import User
@@ -49,7 +52,7 @@ class NotificationService:
         try:
             return Notification.find_by_user_id(user_id, unread_only, limit)
         except Exception as e:
-            print(f"Error getting user notifications: {e}")
+            logger.error("Error getting user notifications: %s", e, exc_info=True)
             return []
 
     @staticmethod
@@ -123,7 +126,7 @@ class NotificationService:
         try:
             return Notification.get_unread_count_by_user(user_id)
         except Exception as e:
-            print(f"Error getting unread count: {e}")
+            logger.error("Error getting unread count: %s", e, exc_info=True)
             return 0
 
     @staticmethod
@@ -253,7 +256,7 @@ class NotificationService:
                 }
 
         except Exception as e:
-            print(f"Error getting notification statistics: {e}")
+            logger.error("Error getting notification statistics: %s", e, exc_info=True)
             return {}
 
     @staticmethod
@@ -275,7 +278,7 @@ class NotificationService:
             return priority_notifications
 
         except Exception as e:
-            print(f"Error getting priority notifications: {e}")
+            logger.error("Error getting priority notifications: %s", e, exc_info=True)
             return []
 
     @staticmethod

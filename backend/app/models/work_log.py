@@ -209,7 +209,8 @@ class WorkLog:
     def get_recent_logs_count(cls, days: int = 7) -> int:
         """Get count of recent logs within specified days."""
         result = execute_query(
-            "SELECT COUNT(*) as count FROM work_logs WHERE work_date >= date('now', '-{} days')".format(days),
+            "SELECT COUNT(*) as count FROM work_logs WHERE work_date >= date('now', '-' || ? || ' days')",
+            (str(int(days)),),
             fetch_one=True
         )
         return result['count'] if result else 0

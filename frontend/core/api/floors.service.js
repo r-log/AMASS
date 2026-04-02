@@ -60,13 +60,13 @@ class FloorsService {
     if (opts.width) formData.append("width", opts.width);
     if (opts.height) formData.append("height", opts.height);
 
-    const response = await fetch(`${this.client.baseUrl}/floors`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.client.authManager.getToken()}`,
-      },
-      body: formData,
-    });
+    const url = `${this.client.baseUrl}/floors`;
+    const headers = {
+      Authorization: `Bearer ${this.client.authManager.getToken()}`,
+    };
+    const response = await (window.offlineQueue
+      ? window.offlineQueue.fetchFormData(url, { method: "POST", headers, body: formData })
+      : fetch(url, { method: "POST", headers, body: formData }));
     if (!response.ok) {
       const err = await response.json();
       throw new Error(err.error || "Failed to create floor");
@@ -116,6 +116,52 @@ class FloorsService {
       );
       throw error;
     }
+  }
+
+  /**
+   * Batch-import multiple floor plans at once.
+   * @param {number} projectId
+   * @param {File[]} files - Array of File objects
+   * @param {string[]} names - Floor name for each file (same order)
+   * @returns {Promise<Object>} { floors, errors, tiles_generating }
+   */
+  async batchImport(projectId, files, names, onUploadProgress) {
+    const formData = new FormData();
+    formData.append("project_id", projectId);
+    files.forEach((f) => formData.append("files[]", f));
+    names.forEach((n) => formData.append("names[]", n));
+
+    const url = `${this.client.baseUrl}/floors/batch-import`;
+    const token = this.client.authManager.getToken();
+
+    // Use XMLHttpRequest for upload progress tracking
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", url);
+      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onUploadProgress) {
+          onUploadProgress(Math.round((e.loaded / e.total) * 100));
+        }
+      };
+
+      xhr.onload = () => {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(data);
+          } else {
+            reject(new Error(data.error || "Batch import failed"));
+          }
+        } catch (e) {
+          reject(new Error("Invalid server response"));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error("Upload failed — network error"));
+      xhr.send(formData);
+    });
   }
 
   /**

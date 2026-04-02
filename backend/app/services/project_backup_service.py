@@ -3,11 +3,14 @@ Project backup service - creates compressed backups before project deletion.
 """
 
 import json
+import logging
 import shutil
 import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 from app.database.connection import execute_query
 from app.models.project import Project
@@ -198,8 +201,7 @@ class ProjectBackupService:
             return True, f"Backup created: {zip_filename}", zip_filename
 
         except Exception as e:
-            import traceback
-            traceback.print_exc()
+            logger.error("Failed to create backup: %s", e, exc_info=True)
             return False, f"Failed to create backup: {str(e)}", None
 
     @staticmethod
@@ -283,7 +285,7 @@ class ProjectBackupService:
                             with zf.open(name) as src, open(dest, "wb") as out:
                                 shutil.copyfileobj(src, out)
             except Exception as ex:
-                print(f"Warning: could not extract floor plans: {ex}")
+                logger.warning("Could not extract floor plans: %s", ex)
 
             # 4. Project user assignments
             for pua in pua_data:
@@ -410,6 +412,5 @@ class ProjectBackupService:
         except KeyError as e:
             return False, None, f"Backup missing required content: {e}"
         except Exception as e:
-            import traceback
-            traceback.print_exc()
+            logger.error("Failed to restore: %s", e, exc_info=True)
             return False, None, f"Failed to restore: {str(e)}"

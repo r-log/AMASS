@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from flask import current_app
 
-from app.database.connection import get_db, table_exists, add_column_if_not_exists
+from app.database.connection import get_db, table_exists, add_column_if_not_exists, _ALLOWED_TABLE_NAMES
 from app.models import (
     User, Floor, Project, ProjectUserAssignment, WorkLog, CriticalSector,
     Assignment, Notification, CableRoute, WorkTemplate
@@ -178,17 +178,22 @@ def seed_default_data() -> None:
         if not users:
             print("Creating default admin user...")
             from werkzeug.security import generate_password_hash
+            import secrets as _secrets
+
+            # Generate a secure random password instead of using a hardcoded one
+            generated_password = _secrets.token_urlsafe(12)
 
             admin_user = User(
                 username='admin',
-                password_hash=generate_password_hash('admin123'),
+                password_hash=generate_password_hash(generated_password),
                 full_name='System Administrator',
                 role='admin',
                 is_active=True
             )
             admin_user.save()
-            print("Default admin user created (username: admin, password: admin123)")
-            print("⚠️  Please change the default password after first login!")
+            print(f"Default admin user created (username: admin, password: {generated_password})")
+            print("⚠️  IMPORTANT: Save this password now — it will not be shown again!")
+            print("⚠️  Change it after first login.")
 
     except Exception as e:
         print(f"Error seeding default data: {e}")
@@ -233,15 +238,9 @@ def migrate_add_missing_columns() -> None:
     for table_name, column_name, column_definition in missing_columns:
         try:
             if table_exists(table_name):
-                # Check if column exists
-                cursor = db.execute(f"PRAGMA table_info({table_name})")
-                existing_columns = [col[1] for col in cursor.fetchall()]
-
-                if column_name not in existing_columns:
+                full_col_def = f"{column_name} {column_definition}"
+                if add_column_if_not_exists(table_name, full_col_def):
                     print(f"Adding column {column_name} to {table_name}")
-                    db.execute(
-                        f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}")
-                    db.commit()
 
         except Exception as e:
             print(f"Error adding column {column_name} to {table_name}: {e}")
@@ -306,8 +305,17 @@ def migrate_add_indexes() -> None:
         ("idx_users_active", "users", "is_active"),
     ]
 
+    import re
+    _ident_re = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+
     for index_name, table_name, column_name in indexes_to_create:
         try:
+            if table_name not in _ALLOWED_TABLE_NAMES:
+                print(f"Skipping index for unknown table: {table_name}")
+                continue
+            if not _ident_re.match(index_name) or not _ident_re.match(column_name):
+                print(f"Skipping index with invalid identifier: {index_name}")
+                continue
             if table_exists(table_name):
                 db.execute(
                     f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({column_name})")
@@ -437,10 +445,13 @@ def reset_database() -> None:
     )
     tables = [row['name'] for row in cursor.fetchall()]
 
-    # Drop all tables
+    # Drop all tables (only known tables to prevent injection)
     for table in tables:
-        print(f"Dropping table: {table}")
-        db.execute(f"DROP TABLE IF EXISTS {table}")
+        if table in _ALLOWED_TABLE_NAMES:
+            print(f"Dropping table: {table}")
+            db.execute(f"DROP TABLE IF EXISTS {table}")
+        else:
+            print(f"Skipping unknown table: {table}")
 
     db.commit()
 
@@ -506,7 +517,9 @@ def get_database_info() -> dict:
     for row in cursor.fetchall():
         table_name = row['name']
 
-        # Get record count
+        # Get record count (only for known tables)
+        if table_name not in _ALLOWED_TABLE_NAMES:
+            continue
         count_cursor = db.execute(
             f"SELECT COUNT(*) as count FROM {table_name}")
         count = count_cursor.fetchone()['count']

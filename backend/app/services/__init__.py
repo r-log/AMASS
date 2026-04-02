@@ -10,7 +10,7 @@ from .critical_sector_service import CriticalSectorService
 from .notification_service import NotificationService
 from .assignment_service import AssignmentService
 from .tile_service import TileService
-from .notification_service import NotificationService
+from .dashboard_service import DashboardService
 
 __all__ = [
     'AuthService',
@@ -19,5 +19,6 @@ __all__ = [
     'CriticalSectorService',
     'NotificationService',
     'AssignmentService',
-    'TileService'
+    'TileService',
+    'DashboardService'
 ]

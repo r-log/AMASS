@@ -17,6 +17,37 @@ ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg'}
 PLACEHOLDER_IMAGE = 'placeholder.pdf'
 
 
+def _get_request_data(for_create=False):
+    """
+    Unified request parsing for floor create/update.
+    Returns dict from JSON or multipart/form-data.
+    For update (for_create=False): returns raw JSON (no form support).
+    For create: form includes _form=True, _file; JSON returns normalized fields.
+    """
+    if not for_create:
+        return request.get_json() or {}
+    if request.content_type and 'multipart/form-data' in request.content_type:
+        return {
+            'project_id': request.form.get('project_id', type=int),
+            'name': (request.form.get('name') or '').strip() or None,
+            'image_path': PLACEHOLDER_IMAGE,
+            'width': request.form.get('width', type=int) or 1920,
+            'height': request.form.get('height', type=int) or 1080,
+            'sort_order': request.form.get('sort_order', type=int) or 0,
+            '_form': True,
+            '_file': request.files.get('file') if request.files else None,
+        }
+    req = request.get_json() or {}
+    return {
+        'project_id': req.get('project_id'),
+        'name': (req.get('name') or '').strip() or None,
+        'image_path': req.get('image_path') or PLACEHOLDER_IMAGE,
+        'width': req.get('width', 1920),
+        'height': req.get('height', 1080),
+        'sort_order': req.get('sort_order', 0),
+    }
+
+
 @floors_bp.route('', methods=['GET'])
 @token_required
 def get_floors():
@@ -37,8 +68,7 @@ def get_floors():
         return jsonify([floor.to_dict() for floor in floors]), 200
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        current_app.logger.error("Failed to get floors: %s", e, exc_info=True)
         return jsonify({'error': f'Failed to get floors: {str(e)}'}), 500
 
 
@@ -47,40 +77,28 @@ def get_floors():
 def get_floor(floor_id):
     """Get specific floor by ID."""
     try:
-        print(f"\n{'#'*60}")
-        print(f"[FLOOR DETAIL] GET floor ID: {floor_id}")
-
         floor = FloorService.get_floor_by_id(floor_id)
-
         if not floor:
-            print(f"[FLOOR DETAIL] ❌ Floor {floor_id} not found")
             return jsonify({'error': 'Floor not found'}), 404
-
-        print(f"[FLOOR DETAIL] ✓ Floor found: {floor.name}")
-        print(f"[FLOOR DETAIL]   Image: {floor.image_path}")
-        print(f"[FLOOR DETAIL]   Active: {floor.is_active}")
-        print(f"[FLOOR DETAIL] ✓ Sending floor data")
-        print(f"{'#'*60}\n")
-
         return jsonify(floor.to_dict()), 200
 
     except Exception as e:
-        print(f"[FLOOR DETAIL] ❌ Error getting floor {floor_id}: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        current_app.logger.error("Error getting floor %d: %s", floor_id, e)
         return jsonify({'error': f'Failed to get floor: {str(e)}'}), 500
 
 
-def _trigger_async_tile_generation(floor_id: int, app) -> None:
+def _trigger_async_tile_generation(floor_id: int, app, force: bool = False) -> None:
     """Run tile generation in background thread."""
     def _run():
         with app.app_context():
             try:
                 from app.services.tile_service import TileService
-                TileService.generate_tiles(floor_id)
-                print(f"[FLOORS] ✓ Async tile generation completed for floor {floor_id}")
+                if force:
+                    TileService.regenerate_tiles(floor_id)
+                else:
+                    TileService.generate_tiles(floor_id)
             except Exception as e:
-                print(f"[FLOORS] ✗ Async tile generation failed for floor {floor_id}: {e}")
+                current_app.logger.error("Async tile gen failed for floor %d: %s", floor_id, e)
 
     thread = threading.Thread(target=_run)
     thread.daemon = True
@@ -98,38 +116,18 @@ def create_floor():
     """
     try:
         user_id = request.current_user.get('user_id')
-        data = {}
-        had_file = False
+        data = _get_request_data(for_create=True)
 
-        if request.content_type and 'multipart/form-data' in request.content_type:
-            data['project_id'] = request.form.get('project_id', type=int)
-            data['name'] = request.form.get('name', '').strip()  # optional, auto-generated if empty
-            file = request.files.get('file')
-            if file and file.filename and _allowed_file(file.filename):
-                had_file = True
-                data['_uploaded_file'] = file
-                data['_file_ext'] = file.filename.rsplit('.', 1)[1].lower()
-            else:
-                data['image_path'] = PLACEHOLDER_IMAGE
-            data['width'] = request.form.get('width', type=int) or 1920
-            data['height'] = request.form.get('height', type=int) or 1080
-            data['sort_order'] = request.form.get('sort_order', type=int) or 0
-        else:
-            req_data = request.get_json() or {}
-            data = {
-                'name': req_data.get('name', '').strip() or None,
-                'project_id': req_data.get('project_id'),
-                'image_path': req_data.get('image_path') or PLACEHOLDER_IMAGE,
-                'width': req_data.get('width', 1920),
-                'height': req_data.get('height', 1080),
-                'sort_order': req_data.get('sort_order', 0),
-            }
+        file = data.pop('_file', None) if data.get('_form') else None
+        data.pop('_form', None)
+        had_file = False
+        if file and file.filename and _allowed_file(file.filename):
+            had_file = True
+            data['_uploaded_file'] = file
+            data['_file_ext'] = file.filename.rsplit('.', 1)[1].lower()
 
         if not data.get('project_id'):
             return jsonify({'error': 'project_id is required'}), 400
-
-        if '_uploaded_file' in data:
-            data['image_path'] = PLACEHOLDER_IMAGE
 
         create_data = {k: v for k, v in data.items() if not k.startswith('_')}
         if create_data.get('name') is None:
@@ -159,8 +157,7 @@ def create_floor():
             return jsonify({'error': message}), 400
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
+        current_app.logger.error("Failed to create floor: %s", e, exc_info=True)
         return jsonify({'error': f'Failed to create floor: {str(e)}'}), 500
 
 
@@ -169,7 +166,7 @@ def create_floor():
 def update_floor(floor_id):
     """Update floor (supervisor only)."""
     try:
-        data = request.get_json()
+        data = _get_request_data(for_create=False)
         user_id = request.current_user.get('user_id')
 
         success, floor, message = FloorService.update_floor(
@@ -239,16 +236,97 @@ def upload_floor_plan(floor_id):
         floor.image_path = safe_name
         floor.save()
 
-        _trigger_async_tile_generation(floor_id, current_app._get_current_object())
+        # Clear old tiles and force regeneration with the new file
+        from app.services.tile_service import TileService
+        TileService.clear_tile_cache(floor_id)
+        _trigger_async_tile_generation(floor_id, current_app._get_current_object(), force=True)
 
         return jsonify({
-            'message': 'Floor plan uploaded successfully. Tiles are generating.',
+            'message': 'Floor plan updated. Old tiles cleared, new tiles are generating.',
             'image_path': safe_name,
-            'tiles_generating': True
+            'tiles_generating': True,
+            'updated': True
         }), 200
 
     except Exception as e:
         return jsonify({'error': f'Failed to upload: {str(e)}'}), 500
+
+
+@floors_bp.route('/batch-import', methods=['POST'])
+@supervisor_required
+def batch_import_floors():
+    """
+    Batch-import multiple floor plan files at once.
+    Accepts multipart/form-data with:
+      - project_id (required)
+      - files[] (multiple file uploads)
+      - names[] (floor name for each file, same order)
+    """
+    try:
+        user_id = request.current_user.get('user_id')
+        project_id = request.form.get('project_id', type=int)
+        if not project_id:
+            return jsonify({'error': 'project_id is required'}), 400
+
+        files = request.files.getlist('files[]')
+        names = request.form.getlist('names[]')
+
+        if not files:
+            return jsonify({'error': 'No files provided'}), 400
+
+        floor_plans_dir = Path(current_app.config.get('FLOOR_PLANS_DIR', 'floor-plans'))
+        floor_plans_dir.mkdir(parents=True, exist_ok=True)
+
+        created_floors = []
+        errors = []
+        app = current_app._get_current_object()
+
+        for i, file in enumerate(files):
+            if not file or not file.filename:
+                continue
+            if not _allowed_file(file.filename):
+                errors.append(f"{file.filename}: unsupported file type")
+                continue
+
+            # Use provided name or fall back to auto-generated
+            floor_name = names[i].strip() if i < len(names) and names[i].strip() else None
+
+            create_data = {
+                'project_id': project_id,
+                'image_path': PLACEHOLDER_IMAGE,
+                'width': 1920,
+                'height': 1080,
+                'sort_order': i,
+            }
+            if floor_name:
+                create_data['name'] = floor_name
+
+            success, floor, message = FloorService.create_floor(create_data, user_id)
+            if not success or not floor:
+                errors.append(f"{file.filename}: {message}")
+                continue
+
+            # Save file
+            ext = file.filename.rsplit('.', 1)[1].lower()
+            safe_name = secure_filename(f"floor-{floor.id}.{ext}")
+            file.save(str(floor_plans_dir / safe_name))
+            floor.image_path = safe_name
+            floor.save()
+
+            # Trigger async tile generation
+            _trigger_async_tile_generation(floor.id, app)
+            created_floors.append(floor.to_dict())
+
+        return jsonify({
+            'message': f'Imported {len(created_floors)} floor(s)',
+            'floors': created_floors,
+            'errors': errors,
+            'tiles_generating': len(created_floors) > 0
+        }), 201
+
+    except Exception as e:
+        current_app.logger.error("Batch import failed: %s", e, exc_info=True)
+        return jsonify({'error': f'Batch import failed: {str(e)}'}), 500
 
 
 @floors_bp.route('/statistics', methods=['GET'])

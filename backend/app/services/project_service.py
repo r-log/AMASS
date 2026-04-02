@@ -2,6 +2,7 @@
 Project service for managing projects and worker assignments.
 """
 
+import logging
 from typing import Dict, Any, Optional, List, Tuple
 from app.models.project import Project
 from app.models.project_user_assignment import ProjectUserAssignment
@@ -11,6 +12,9 @@ from app.models.work_log import WorkLog
 from app.models.cable_route import CableRoute
 from app.models.assignment import Assignment
 from app.models.critical_sector import CriticalSector
+from app.database.connection import database_transaction
+
+logger = logging.getLogger(__name__)
 
 
 class ProjectService:
@@ -141,25 +145,28 @@ class ProjectService:
             if not success:
                 return False, msg, None
 
-            # Cascade delete (reverse dependency order)
-            floors = Floor.find_all(project_id=project_id)
+            # Cascade delete inside a transaction — all or nothing
+            with database_transaction():
+                floors = Floor.find_all(project_id=project_id)
+                for floor in floors:
+                    work_logs = WorkLog.find_by_floor_id(floor.id)
+                    for wl in work_logs:
+                        CableRoute.delete_by_work_log_id(wl.id)
+                        Assignment.delete_by_work_log_id(wl.id)
+                    WorkLog.delete_by_floor_id(floor.id)
+                    CriticalSector.delete_by_floor_id(floor.id)
+                Floor.delete_by_project_id(project_id)
+                ProjectUserAssignment.delete_by_project_id(project_id)
+                project.delete()
+
+            # Clear tile cache outside the transaction (filesystem ops, not DB)
             for floor in floors:
-                work_logs = WorkLog.find_by_floor_id(floor.id)
-                for wl in work_logs:
-                    CableRoute.delete_by_work_log_id(wl.id)
-                    Assignment.delete_by_work_log_id(wl.id)
-                WorkLog.delete_by_floor_id(floor.id)
-                CriticalSector.delete_by_floor_id(floor.id)
                 try:
                     TileService.clear_tile_cache(floor.id)
                 except Exception as te:
-                    print(f"Warning: could not clear tiles for floor {floor.id}: {te}")
-            Floor.delete_by_project_id(project_id)
-            ProjectUserAssignment.delete_by_project_id(project_id)
-            project.delete()
+                    logger.warning("Could not clear tiles for floor %s: %s", floor.id, te)
 
             return True, f"Project deleted. Backup: {backup_name}", backup_name
         except Exception as e:
-            import traceback
-            traceback.print_exc()
+            logger.error("Failed to delete project %s: %s", project_id, e, exc_info=True)
             return False, f"Failed to delete project: {str(e)}", None

@@ -2,8 +2,11 @@
 Floor service for managing building floors and floor plans.
 """
 
+import logging
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from app.models.floor import Floor
 from app.models.work_log import WorkLog
@@ -45,7 +48,7 @@ class FloorService:
                 return Floor.find_all_active(project_id)
             return Floor.find_all(project_id)
         except Exception as e:
-            print(f"Error getting floors: {e}")
+            logger.error("Error getting floors: %s", e, exc_info=True)
             return []
 
     @staticmethod
@@ -54,7 +57,7 @@ class FloorService:
         try:
             return Floor.find_by_id(floor_id)
         except Exception as e:
-            print(f"Error getting floor {floor_id}: {e}")
+            logger.error("Error getting floor %d: %s", floor_id, e, exc_info=True)
             return None
 
     @staticmethod
@@ -227,7 +230,7 @@ class FloorService:
                 }
 
         except Exception as e:
-            print(f"Error getting floor statistics: {e}")
+            logger.error("Error getting floor statistics: %s", e, exc_info=True)
             return {}
 
     @staticmethod
@@ -282,7 +285,7 @@ class FloorService:
             floor_plan_path = Path(floor_plans_dir) / floor.image_path
             return floor_plan_path.exists(), str(floor_plan_path)
         except Exception as e:
-            print(f"Error checking floor plan file: {e}")
+            logger.error("Error checking floor plan file: %s", e, exc_info=True)
             return False, ""
 
     @staticmethod
@@ -354,7 +357,7 @@ class FloorService:
             }
 
         except Exception as e:
-            print(f"Error getting floor work summary: {e}")
+            logger.error("Error getting floor work summary: %s", e, exc_info=True)
             return {}
 
     @staticmethod
@@ -386,7 +389,7 @@ class FloorService:
             return active_floors
 
         except Exception as e:
-            print(f"Error getting floors with activity: {e}")
+            logger.error("Error getting floors with activity: %s", e, exc_info=True)
             return []
 
     @staticmethod

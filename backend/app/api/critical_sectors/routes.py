@@ -5,6 +5,7 @@ Critical Sectors API routes.
 from flask import Blueprint, request, jsonify
 from app.services.critical_sector_service import CriticalSectorService
 from app.utils.decorators import token_required, supervisor_required
+from app.realtime import broadcast, broadcast_to_rooms
 
 critical_sectors_bp = Blueprint('critical_sectors', __name__, url_prefix='')
 critical_sectors_bp.strict_slashes = False
@@ -49,9 +50,14 @@ def create_critical_sector():
             data, user_id)
 
         if success:
+            payload = sector.to_dict() if sector else {}
+            floor_id = sector.floor_id if sector else data.get('floor_id')
+            if floor_id:
+                broadcast('sector_created', payload, room=f'floor:{floor_id}')
+            broadcast_to_rooms('stats_changed', {}, rooms=['role:supervisor', 'role:admin'])
             return jsonify({
                 'message': message,
-                'sector': sector.to_dict() if sector else None
+                'sector': payload
             }), 201
         else:
             return jsonify({'error': message}), 400
@@ -94,9 +100,14 @@ def update_critical_sector(sector_id):
         )
 
         if success:
+            payload = sector.to_dict() if sector else {}
+            floor_id = sector.floor_id if sector else data.get('floor_id')
+            if floor_id:
+                broadcast('sector_updated', payload, room=f'floor:{floor_id}')
+            broadcast_to_rooms('stats_changed', {}, rooms=['role:supervisor', 'role:admin'])
             return jsonify({
                 'message': message,
-                'sector': sector.to_dict() if sector else None
+                'sector': payload
             }), 200
         else:
             return jsonify({'error': message}), 400
@@ -111,10 +122,13 @@ def delete_critical_sector(sector_id):
     """Delete (deactivate) a critical sector."""
     try:
         user_id = request.current_user.get('user_id')
-        success, message = CriticalSectorService.delete_critical_sector(
+        success, message, floor_id = CriticalSectorService.delete_critical_sector(
             sector_id, user_id)
 
         if success:
+            if floor_id:
+                broadcast('sector_deleted', {'id': sector_id, 'floor_id': floor_id}, room=f'floor:{floor_id}')
+            broadcast_to_rooms('stats_changed', {}, rooms=['role:supervisor', 'role:admin'])
             return jsonify({'message': message}), 200
         else:
             return jsonify({'error': message}), 400

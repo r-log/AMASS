@@ -5,6 +5,7 @@ Assignments API routes.
 from flask import Blueprint, request, jsonify
 from app.services.assignment_service import AssignmentService
 from app.utils.decorators import token_required, supervisor_required
+from app.realtime import broadcast_to_rooms
 
 assignments_bp = Blueprint('assignments', __name__)
 
@@ -85,9 +86,16 @@ def create_assignment():
         )
 
         if success:
+            payload = assignment.to_dict() if assignment else {}
+            assigned_to = assignment.assigned_to if assignment else data.get('assigned_to')
+            rooms = ['role:supervisor']
+            if assigned_to:
+                rooms.append(f'user:{assigned_to}')
+            broadcast_to_rooms('assignment_created', payload, rooms=rooms)
+            broadcast_to_rooms('stats_changed', {}, rooms=['role:supervisor', 'role:admin'])
             return jsonify({
                 'message': message,
-                'assignment': assignment.to_dict() if assignment else None
+                'assignment': payload
             }), 201
         else:
             return jsonify({'error': message}), 400
@@ -129,9 +137,14 @@ def update_assignment(assignment_id):
             )
             if success:
                 updated_assignment = Assignment.find_by_id(assignment_id)
+                payload = updated_assignment.to_dict() if updated_assignment else {}
+                assigned_to = assignment.assigned_to
+                rooms = ['role:supervisor', f'user:{assigned_to}']
+                broadcast_to_rooms('assignment_updated', payload, rooms=rooms)
+                broadcast_to_rooms('stats_changed', {}, rooms=['role:supervisor', 'role:admin'])
                 return jsonify({
                     'message': message,
-                    'assignment': updated_assignment.to_dict() if updated_assignment else None
+                    'assignment': payload
                 }), 200
             else:
                 return jsonify({'error': message}), 400
@@ -147,11 +160,17 @@ def update_assignment(assignment_id):
 def delete_assignment(assignment_id):
     """Delete an assignment."""
     try:
+        from app.models.assignment import Assignment
+        assignment = Assignment.find_by_id(assignment_id)
+        assigned_to = assignment.assigned_to if assignment else None
         user_id = request.current_user.get('user_id')
         success, message = AssignmentService.delete_assignment(
             assignment_id, user_id)
 
         if success:
+            if assigned_to:
+                broadcast_to_rooms('assignment_deleted', {'id': assignment_id}, rooms=['role:supervisor', f'user:{assigned_to}'])
+            broadcast_to_rooms('stats_changed', {}, rooms=['role:supervisor', 'role:admin'])
             return jsonify({'message': message}), 200
         else:
             return jsonify({'error': message}), 400
@@ -191,9 +210,14 @@ def update_assignment_status(assignment_id):
 
         if success:
             updated_assignment = Assignment.find_by_id(assignment_id)
+            payload = updated_assignment.to_dict() if updated_assignment else {}
+            assigned_to = assignment.assigned_to
+            rooms = ['role:supervisor', f'user:{assigned_to}']
+            broadcast_to_rooms('assignment_updated', payload, rooms=rooms)
+            broadcast_to_rooms('stats_changed', {}, rooms=['role:supervisor', 'role:admin'])
             return jsonify({
                 'message': message,
-                'assignment': updated_assignment.to_dict() if updated_assignment else None
+                'assignment': payload
             }), 200
         else:
             return jsonify({'error': message}), 400
@@ -281,8 +305,15 @@ def bulk_create_assignments():
                 'message': message,
                 'assignment': assignment.to_dict() if assignment else None
             })
-            if success:
+            if success and assignment:
+                payload = assignment.to_dict()
+                assigned_to = assignment.assigned_to
+                rooms = ['role:supervisor', f'user:{assigned_to}']
+                broadcast_to_rooms('assignment_created', payload, rooms=rooms)
                 success_count += 1
+
+        if success_count > 0:
+            broadcast_to_rooms('stats_changed', {}, rooms=['role:supervisor', 'role:admin'])
 
         return jsonify({
             'message': f'Created {success_count}/{len(data["assignments"])} assignments',

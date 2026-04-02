@@ -26,6 +26,10 @@
     <!-- Configuration -->
     <script src="config/app.config.js" defer></script>
 
+    <!-- Offline queue (must load before api.client) -->
+    <script src="core/offline/offline-queue.js" defer></script>
+    <script src="core/offline/offline-banner.js" defer></script>
+
     <!-- Core API Services -->
     <script src="core/api/api.client.js" defer></script>
     <script src="core/api/auth.service.js" defer></script>
@@ -40,11 +44,17 @@
     <script src="core/utils/date.utils.js" defer></script>
     <script src="core/utils/format.utils.js" defer></script>
 
+    <!-- Real-time WebSocket client -->
+    <script src="core/realtime/ws-client.js" defer></script>
+
     <!-- Authentication Manager (uses services) -->
     <script src="auth.js" defer></script>
 
     <!-- Critical Sector Drawer -->
     <script src="components/critical-sector-drawer.js" defer></script>
+
+    <!-- Map components (MarkerManager - requires OpenSeadragon) -->
+    <script src="map/marker-manager.js" defer></script>
 
     <style>
         /* Only disable scroll on map view */

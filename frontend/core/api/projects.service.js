@@ -110,11 +110,9 @@ class ProjectsService {
     const token = this.client.authManager?.getToken();
     if (!token) throw new Error("Authentication required");
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData,
-    });
+    const response = await (window.offlineQueue
+      ? window.offlineQueue.fetchFormData(url, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData })
+      : fetch(url, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: formData }));
 
     const data = await response.json();
     if (!response.ok) {
