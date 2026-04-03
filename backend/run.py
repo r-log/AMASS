@@ -1,5 +1,7 @@
 """
 Main entry point for the refactored Electrician Log MVP application.
+
+Version: 0.2.0
 """
 
 import os
