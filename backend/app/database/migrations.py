@@ -191,9 +191,14 @@ def seed_default_data() -> None:
                 is_active=True
             )
             admin_user.save()
-            print(f"Default admin user created (username: admin, password: {generated_password})")
-            print("⚠️  IMPORTANT: Save this password now — it will not be shown again!")
-            print("⚠️  Change it after first login.")
+            print(f"Default admin user created (username: admin)")
+            print(f"Generated password written to: admin_password.txt")
+            print("⚠️  IMPORTANT: Read and delete that file, then change the password after first login.")
+            # Write password to a file instead of printing to stdout/logs
+            from pathlib import Path
+            pw_file = Path(__file__).resolve().parent.parent / 'admin_password.txt'
+            pw_file.write_text(f"admin:{generated_password}\n")
+            pw_file.chmod(0o600)
 
     except Exception as e:
         print(f"Error seeding default data: {e}")

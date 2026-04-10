@@ -139,14 +139,25 @@ createApp({
       // Show success state
       const button = document.querySelector(".login-button");
       if (button) {
-        button.innerHTML = `
-                    <span class="flex items-center justify-center">
-                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-                        </svg>
-                        Welcome, ${user.full_name}!
-                    </span>
-                `;
+        button.textContent = "";
+        const span = document.createElement("span");
+        span.className = "flex items-center justify-center";
+
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("class", "w-5 h-5 mr-2");
+        svg.setAttribute("fill", "none");
+        svg.setAttribute("stroke", "currentColor");
+        svg.setAttribute("viewBox", "0 0 24 24");
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("stroke-linecap", "round");
+        path.setAttribute("stroke-linejoin", "round");
+        path.setAttribute("stroke-width", "2");
+        path.setAttribute("d", "M5 13l4 4L19 7");
+        svg.appendChild(path);
+
+        span.appendChild(svg);
+        span.appendChild(document.createTextNode(` Welcome, ${user.full_name}!`));
+        button.appendChild(span);
         button.style.background =
           "linear-gradient(135deg, #10b981 0%, #059669 100%)";
       }

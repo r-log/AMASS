@@ -62,3 +62,4 @@ PROBLEMOVI.md
 *.log
 *.tmp
 .cache/
+backend/app/admin_password.txt

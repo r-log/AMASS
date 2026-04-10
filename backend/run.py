@@ -58,7 +58,7 @@ def main():
 
     # Run the application
     app.run(
-        debug=app.config.get('DEBUG', True),
+        debug=app.config.get('DEBUG', False),
         host='0.0.0.0',
         port=5000
     )
