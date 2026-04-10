@@ -3,9 +3,23 @@ name: CI
 on:
   push:
     branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "Dockerfile"
+      - "docker-compose*.yml"
+      - ".github/workflows/ci.yml"
   pull_request:
     branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "Dockerfile"
+      - "docker-compose*.yml"
+      - ".github/workflows/ci.yml"
 
+# Same branch: new push cancels the old run (no wasted minutes)
+# Different branches: run in parallel (capped by GitHub's runner limit)
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -94,12 +108,17 @@ jobs:
           path: test-results.xml
 
   # --------------------------------------------------------------------------
-  # Docker build — verify the image builds successfully
+  # Docker build — only when Dockerfile or deps change
   # --------------------------------------------------------------------------
   docker:
     name: Docker build
     runs-on: ubuntu-latest
     needs: [lint, test]
+    # Skip Docker build if only Python/JS code changed (no infra files)
+    if: |
+      github.event_name == 'push' ||
+      contains(github.event.pull_request.labels.*.name, 'docker') ||
+      hashFiles('Dockerfile', 'docker-compose*.yml', 'backend/requirements.txt') != ''
     steps:
       - uses: actions/checkout@v4
 
