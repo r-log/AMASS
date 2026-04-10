@@ -3,6 +3,7 @@ Database migrations and initialization for the Electrician Log MVP.
 Handles table creation and data seeding.
 """
 
+import logging
 import os
 import shutil
 import sqlite3
@@ -15,6 +16,8 @@ from app.models import (
     User, Floor, Project, ProjectUserAssignment, WorkLog, CriticalSector,
     Assignment, Notification, CableRoute, WorkTemplate
 )
+
+logger = logging.getLogger(__name__)
 
 
 def get_migration_version() -> int:
@@ -42,7 +45,7 @@ def get_migration_version() -> int:
         return result['version'] if result and result['version'] else 0
 
     except Exception as e:
-        print(f"Error getting migration version: {e}")
+        logger.error("Error getting migration version: %s", e)
         return 0
 
 
@@ -65,17 +68,17 @@ def backup_database() -> str:
 
         backup_path = f"{database_path}.backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         shutil.copy2(database_path, backup_path)
-        print(f"Database backup created: {backup_path}")
+        logger.info("Database backup created: %s", backup_path)
         return backup_path
 
     except Exception as e:
-        print(f"Error creating database backup: {e}")
+        logger.error("Error creating database backup: %s", e)
         return ""
 
 
 def initialize_database() -> None:
     """Initialize the database with all tables and default data."""
-    print("Initializing database...")
+    logger.info("Initializing database...")
 
     # Create tables in dependency order (projects before floors)
     tables_to_create = [
@@ -95,11 +98,11 @@ def initialize_database() -> None:
 
     for table_name, model_class in tables_to_create:
         if not table_exists(table_name):
-            print(f"Creating table: {table_name}")
+            logger.info("Creating table: %s", table_name)
             db.execute(model_class.create_table())
             db.commit()
         else:
-            print(f"Table {table_name} already exists")
+            logger.debug("Table %s already exists", table_name)
 
     # Seed default data
     seed_default_data()
@@ -108,19 +111,19 @@ def initialize_database() -> None:
     # This function can also be called from reset_database() where the
     # caller handles versioning separately.
 
-    print("Database initialization completed!")
+    logger.info("Database initialization completed")
 
 
 def seed_default_data() -> None:
     """Seed the database with default data."""
-    print("Seeding default data...")
+    logger.info("Seeding default data...")
 
     try:
         # Add default project if none exist
         projects = Project.find_all()
         default_project_id = None
         if not projects:
-            print("Adding default project...")
+            logger.info("Adding default project...")
             default_project = Project(
                 name='Default Project',
                 description='Default project for initial setup',
@@ -128,14 +131,14 @@ def seed_default_data() -> None:
             )
             default_project.save()
             default_project_id = default_project.id
-            print(f"Added default project (id={default_project_id})")
+            logger.info("Added default project (id=%d)", default_project_id)
         else:
             default_project_id = projects[0].id
 
         # Add default floors if none exist
         floors = Floor.find_all()
         if not floors and default_project_id:
-            print("Adding default floors...")
+            logger.info("Adding default floors...")
             default_floors = [
                 Floor(project_id=default_project_id, name='Ground Floor', image_path='floor-1.pdf',
                       width=1920, height=1080, sort_order=0),
@@ -156,26 +159,26 @@ def seed_default_data() -> None:
             for floor in default_floors:
                 floor.save()
 
-            print(f"Added {len(default_floors)} default floors")
+            logger.info("Added %d default floors", len(default_floors))
 
             # Assign all workers to default project
             workers = User.find_by_role('worker')
             for worker in workers:
                 ProjectUserAssignment.assign(default_project_id, worker.id)
             if workers:
-                print(f"Assigned {len(workers)} workers to default project")
+                logger.info("Assigned %d workers to default project", len(workers))
 
         # Add default work templates if none exist
         templates = WorkTemplate.find_all_active()
         if not templates:
-            print("Creating default work templates...")
+            logger.info("Creating default work templates...")
             WorkTemplate.create_default_templates()
-            print("Added default work templates")
+            logger.info("Added default work templates")
 
         # Create default admin user if no users exist
         users = User.find_all_active()
         if not users:
-            print("Creating default admin user...")
+            logger.info("Creating default admin user...")
             from werkzeug.security import generate_password_hash
             import secrets as _secrets
 
@@ -190,22 +193,24 @@ def seed_default_data() -> None:
                 is_active=True
             )
             admin_user.save()
-            print(f"Default admin user created (username: admin)")
-            print(f"Generated password written to: admin_password.txt")
-            print("⚠️  IMPORTANT: Read and delete that file, then change the password after first login.")
-            # Write password to a file instead of printing to stdout/logs
+            # Write password to a file instead of logging to stdout
             from pathlib import Path
             pw_file = Path(__file__).resolve().parent.parent / 'admin_password.txt'
             pw_file.write_text(f"admin:{generated_password}\n")
             pw_file.chmod(0o600)
+            logger.warning(
+                "Default admin user created (username: admin). "
+                "Generated password written to %s — read, delete, then change it on first login.",
+                pw_file,
+            )
 
     except Exception as e:
-        print(f"Error seeding default data: {e}")
+        logger.error("Error seeding default data: %s", e)
 
 
 def migrate_add_missing_columns() -> None:
     """Migration to add missing columns to existing tables."""
-    print("Running migration: Add missing columns...")
+    logger.info("Running migration: Add missing columns...")
 
     db = get_db()
 
@@ -244,17 +249,17 @@ def migrate_add_missing_columns() -> None:
             if table_exists(table_name):
                 full_col_def = f"{column_name} {column_definition}"
                 if add_column_if_not_exists(table_name, full_col_def):
-                    print(f"Adding column {column_name} to {table_name}")
+                    logger.info("Adding column %s to %s", column_name, table_name)
 
         except Exception as e:
-            print(f"Error adding column {column_name} to {table_name}: {e}")
+            logger.error("Error adding column %s to %s: %s", column_name, table_name, e)
 
-    print("Migration completed: Add missing columns")
+    logger.info("Migration completed: Add missing columns")
 
 
 def migrate_update_foreign_keys() -> None:
     """Migration to ensure foreign key constraints are properly set up."""
-    print("Running migration: Update foreign keys...")
+    logger.info("Running migration: Update foreign keys...")
 
     db = get_db()
 
@@ -264,14 +269,12 @@ def migrate_update_foreign_keys() -> None:
 
     # Add foreign key constraints by recreating tables if needed
     # This is a complex operation in SQLite, so we'll just ensure they're enabled
-    print("Foreign key constraints enabled")
-
-    print("Migration completed: Update foreign keys")
+    logger.info("Migration completed: Update foreign keys")
 
 
 def migrate_add_indexes() -> None:
     """Migration to add database indexes for better performance."""
-    print("Running migration: Add database indexes...")
+    logger.info("Running migration: Add database indexes...")
 
     db = get_db()
 
@@ -315,38 +318,38 @@ def migrate_add_indexes() -> None:
     for index_name, table_name, column_name in indexes_to_create:
         try:
             if table_name not in _ALLOWED_TABLE_NAMES:
-                print(f"Skipping index for unknown table: {table_name}")
+                logger.warning("Skipping index for unknown table: %s", table_name)
                 continue
             if not _ident_re.match(index_name) or not _ident_re.match(column_name):
-                print(f"Skipping index with invalid identifier: {index_name}")
+                logger.warning("Skipping index with invalid identifier: %s", index_name)
                 continue
             if table_exists(table_name):
                 db.execute(
                     f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name}({column_name})")
                 db.commit()
-                print(f"Created index: {index_name}")
+                logger.debug("Created index: %s", index_name)
 
         except Exception as e:
-            print(f"Error creating index {index_name}: {e}")
+            logger.error("Error creating index %s: %s", index_name, e)
 
-    print("Migration completed: Add database indexes")
+    logger.info("Migration completed: Add database indexes")
 
 
 def migrate_add_projects() -> None:
     """Migration to add projects, project_user_assignments, and project_id on floors."""
-    print("Running migration: Add projects and project assignments...")
+    logger.info("Running migration: Add projects and project assignments...")
 
     db = get_db()
 
     # 1. Create projects table
     if not table_exists('projects'):
-        print("Creating projects table")
+        logger.info("Creating projects table")
         db.execute(Project.create_table())
         db.commit()
 
     # 2. Create project_user_assignments table
     if not table_exists('project_user_assignments'):
-        print("Creating project_user_assignments table")
+        logger.info("Creating project_user_assignments table")
         db.execute(ProjectUserAssignment.create_table())
         db.commit()
 
@@ -358,7 +361,7 @@ def migrate_add_projects() -> None:
     cursor = db.execute("SELECT COUNT(*) as count FROM projects")
     count = cursor.fetchone()['count']
     if count == 0:
-        print("Creating default project")
+        logger.info("Creating default project")
         default_project = Project(
             name='Default Project',
             description='Migration default - all existing floors assigned here',
@@ -370,7 +373,7 @@ def migrate_add_projects() -> None:
         # 5. Assign all existing floors to default project
         db.execute("UPDATE floors SET project_id = ? WHERE project_id IS NULL", (default_project_id,))
         db.commit()
-        print(f"Assigned floors to default project (id={default_project_id})")
+        logger.info("Assigned floors to default project (id=%d)", default_project_id)
 
         # 6. Assign all workers to default project
         workers = User.find_by_role('worker')
@@ -378,8 +381,8 @@ def migrate_add_projects() -> None:
             try:
                 ProjectUserAssignment.assign(default_project_id, worker.id, assigned_by=None)
             except Exception as e:
-                print(f"Warning: Could not assign worker {worker.id} to project: {e}")
-        print(f"Assigned {len(workers)} workers to default project")
+                logger.warning("Could not assign worker %d to project: %s", worker.id, e)
+        logger.info("Assigned %d workers to default project", len(workers))
     else:
         # Backfill floors that have no project_id
         cursor = db.execute("SELECT id FROM projects WHERE is_active = 1 LIMIT 1")
@@ -389,22 +392,68 @@ def migrate_add_projects() -> None:
             db.execute("UPDATE floors SET project_id = ? WHERE project_id IS NULL", (default_project_id,))
             db.commit()
 
-    print("Migration completed: Add projects")
+    logger.info("Migration completed: Add projects")
+
+
+def _acquire_migration_lock():
+    """
+    Acquire an exclusive advisory lock on a file next to the database.
+
+    Returns an open file handle whose lifetime holds the lock — the caller
+    must keep it open until migrations finish. Uses fcntl on Unix (the
+    production target); on other platforms (dev / Windows) the lock is a
+    no-op and concurrent runs fall back to the in-DB version check.
+    """
+    database_path = current_app.config.get('DATABASE_PATH')
+    if not database_path or database_path == ':memory:':
+        return None
+
+    lock_path = f"{database_path}.migration.lock"
+    try:
+        Path(lock_path).parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+
+    try:
+        import fcntl  # Unix only
+    except ImportError:
+        logger.debug("fcntl unavailable — skipping cross-process migration lock")
+        return None
+
+    lock_file = open(lock_path, 'w')
+    logger.debug("Acquiring migration lock: %s", lock_path)
+    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)  # blocks until granted
+    return lock_file
+
+
+def _release_migration_lock(lock_file) -> None:
+    """Release the advisory lock acquired by _acquire_migration_lock()."""
+    if lock_file is None:
+        return
+    try:
+        import fcntl
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+    except Exception:
+        pass
+    try:
+        lock_file.close()
+    except Exception:
+        pass
 
 
 def run_migrations() -> None:
-    """Run all necessary database migrations."""
-    print("Starting database migrations...")
+    """
+    Run all necessary database migrations.
 
-    # Create backup
-    backup_path = backup_database()
-    if backup_path:
-        print(f"Database backed up to: {backup_path}")
-
-    current_version = get_migration_version()
-    print(f"Current migration version: {current_version}")
-
-    # Run migrations based on version
+    Safe to call on every container start:
+      - Fast path: if the DB is already at the latest version, returns
+        immediately without taking a backup or acquiring a lock.
+      - Concurrency: holds an advisory file lock (fcntl.flock) for the full
+        migration sequence so rolling deploys sharing the same volume can't
+        race each other into duplicate version rows. A SQLite transaction
+        wouldn't work here because initialize_database() and model.save()
+        call db.commit() internally.
+    """
     migrations = [
         (1, "Initial database setup", initialize_database),
         (2, "Add missing columns", migrate_add_missing_columns),
@@ -412,34 +461,72 @@ def run_migrations() -> None:
         (4, "Add database indexes", migrate_add_indexes),
         (5, "Add projects and project assignments", migrate_add_projects),
     ]
+    latest_version = max(v for v, _, _ in migrations)
 
-    for version, name, migration_func in migrations:
-        if current_version < version:
-            print(f"Running migration {version}: {name}")
-            try:
-                migration_func()
-                record_migration(version, name)
-                print(f"Migration {version} completed successfully")
-            except Exception as e:
-                print(f"Migration {version} failed: {e}")
-                if backup_path:
-                    print(f"Consider restoring from backup: {backup_path}")
-                raise
+    db = get_db()
+    # Ensure the migrations table exists before reading version
+    get_migration_version()
+    # Let concurrent writers wait briefly rather than fail-fast on SQLITE_BUSY
+    try:
+        db.execute("PRAGMA busy_timeout = 30000")
+    except Exception:
+        pass
 
-    if current_version >= len(migrations):
-        print("All migrations are up to date")
+    # Fast path — no lock, no backup, no work
+    if get_migration_version() >= latest_version:
+        logger.info(
+            "Database already at latest version (%d) — no migrations to run",
+            latest_version,
+        )
+        return
 
-    print("Database migrations completed!")
+    logger.info("Starting database migrations...")
+    lock = _acquire_migration_lock()
+    try:
+        # Re-check under the lock: another container may have just finished
+        current_version = get_migration_version()
+        if current_version >= latest_version:
+            logger.info(
+                "Another process already migrated to version %d — nothing to do",
+                current_version,
+            )
+            return
+
+        logger.info(
+            "Current migration version: %d (target: %d)",
+            current_version,
+            latest_version,
+        )
+
+        # Backup only when we're actually going to run something
+        backup_path = backup_database()
+
+        for version, name, migration_func in migrations:
+            if current_version < version:
+                logger.info("Running migration %d: %s", version, name)
+                try:
+                    migration_func()
+                    record_migration(version, name)
+                    logger.info("Migration %d completed successfully", version)
+                except Exception as e:
+                    logger.error("Migration %d failed: %s", version, e)
+                    if backup_path:
+                        logger.error("Consider restoring from backup: %s", backup_path)
+                    raise
+
+        logger.info("Database migrations completed")
+    finally:
+        _release_migration_lock(lock)
 
 
 def reset_database() -> None:
     """Reset the database by dropping all tables and recreating them."""
-    print("⚠️  WARNING: This will delete all data!")
+    logger.warning("Resetting database — all data will be deleted")
 
     # Create backup first
     backup_path = backup_database()
     if backup_path:
-        print(f"Backup created: {backup_path}")
+        logger.info("Backup created: %s", backup_path)
 
     db = get_db()
 
@@ -452,17 +539,17 @@ def reset_database() -> None:
     # Drop all tables (only known tables to prevent injection)
     for table in tables:
         if table in _ALLOWED_TABLE_NAMES:
-            print(f"Dropping table: {table}")
+            logger.info("Dropping table: %s", table)
             db.execute(f"DROP TABLE IF EXISTS {table}")
         else:
-            print(f"Skipping unknown table: {table}")
+            logger.warning("Skipping unknown table: %s", table)
 
     db.commit()
 
     # Reinitialize database
     initialize_database()
 
-    print("Database reset completed!")
+    logger.info("Database reset completed")
 
 
 def export_database_schema() -> str:
@@ -499,7 +586,7 @@ def export_database_schema() -> str:
             f"-- Database Schema Export\n-- Generated: {datetime.now().isoformat()}\n\n")
         f.write(schema)
 
-    print(f"Database schema exported to: {schema_file}")
+    logger.info("Database schema exported to: %s", schema_file)
     return str(schema_file)
 
 
