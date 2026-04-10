@@ -17,11 +17,11 @@ def get_work_logs():
     try:
         filters = {}
         if request.args.get('floor_id'):
-            filters['floor_id'] = int(request.args.get('floor_id'))
+            filters['floor_id'] = request.args.get('floor_id', type=int)
         if request.args.get('worker_id'):
-            filters['worker_id'] = int(request.args.get('worker_id'))
+            filters['worker_id'] = request.args.get('worker_id', type=int)
         if request.args.get('project_id'):
-            filters['project_id'] = int(request.args.get('project_id'))
+            filters['project_id'] = request.args.get('project_id', type=int)
         if request.args.get('start_date'):
             filters['start_date'] = request.args.get('start_date')
         if request.args.get('end_date'):

@@ -158,7 +158,7 @@ def get_notifications_by_type(notification_type):
         # Filter notifications by type
         all_notifications = NotificationService.get_user_notifications(
             user_id, limit=limit)
-        filtered = [n for n in all_notifications if n.type ==
+        filtered = [n for n in all_notifications if n.notification_type ==
                     notification_type]
 
         return jsonify([notif.to_dict() for notif in filtered]), 200
