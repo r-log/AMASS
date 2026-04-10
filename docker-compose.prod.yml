@@ -1,0 +1,61 @@
+# Production compose — extends the base docker-compose.yml.
+#
+# Usage:
+#   cp .env.example .env        # fill in real values
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# This overlay adds:
+#   - Redis for distributed rate limiting
+#   - Resource limits (CPU / memory)
+#   - Log rotation
+#   - Restart policy
+#   - Health checks
+
+services:
+  app:
+    environment:
+      - FLASK_ENV=production
+      - LOG_LEVEL=${LOG_LEVEL:-WARNING}
+      - RATE_LIMIT_BACKEND=redis
+      - RATE_LIMIT_REDIS_URL=redis://redis:6379/0
+      - PREFERRED_URL_SCHEME=${PREFERRED_URL_SCHEME:-https}
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1g
+        reservations:
+          cpus: "0.5"
+          memory: 256m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+volumes:
+  redis-data:

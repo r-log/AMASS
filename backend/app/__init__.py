@@ -2,6 +2,7 @@
 Flask application factory for the Electrician Log MVP.
 """
 
+import logging
 from pathlib import Path
 
 from flask import Flask, send_from_directory
@@ -35,6 +36,11 @@ def create_app(config_name: str = None) -> Flask:
     # Disable strict slashes to prevent redirect issues with CORS preflight
     app.url_map.strict_slashes = False
 
+    # ------------------------------------------------------------------
+    # Logging — configure before anything else so startup messages work
+    # ------------------------------------------------------------------
+    _configure_logging(app)
+
     # Initialize CORS — credentials require explicit origins (no wildcard)
     cors_origins = app.config.get('CORS_ORIGINS', ['*'])
     uses_credentials = '*' not in cors_origins
@@ -53,6 +59,10 @@ def create_app(config_name: str = None) -> Flask:
     # Register error handlers
     register_error_handlers(app)
 
+    # Security headers
+    if app.config.get('SECURITY_HEADERS'):
+        _register_security_headers(app)
+
     # Rate limiting middleware (before routes so limits apply to all blueprints)
     from app.middleware.rate_limiting import init_rate_limiting
     init_rate_limiting(app)
@@ -65,6 +75,43 @@ def create_app(config_name: str = None) -> Flask:
     register_websocket(app)
 
     return app
+
+
+def _configure_logging(app: Flask) -> None:
+    """Set log level and format from config for both Flask and library loggers."""
+    log_level = getattr(logging, app.config.get('LOG_LEVEL', 'INFO').upper(), logging.INFO)
+    log_format = app.config.get('LOG_FORMAT', '%(asctime)s [%(levelname)s] %(name)s: %(message)s')
+
+    # Root logger — catches everything including library output
+    root = logging.getLogger()
+    root.setLevel(log_level)
+
+    # Replace existing handlers to avoid duplicate output under gunicorn
+    handler = logging.StreamHandler()
+    handler.setLevel(log_level)
+    handler.setFormatter(logging.Formatter(log_format))
+    root.handlers = [handler]
+
+    # Flask's own logger inherits from root, just set the level
+    app.logger.setLevel(log_level)
+
+
+def _register_security_headers(app: Flask) -> None:
+    """Inject security headers on every response."""
+    @app.after_request
+    def _set_security_headers(response):
+        h = response.headers
+        h.setdefault('X-Content-Type-Options', 'nosniff')
+        h.setdefault('X-Frame-Options', 'SAMEORIGIN')
+        h.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+        h.setdefault('X-XSS-Protection', '1; mode=block')
+        h.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+
+        # HSTS — only when running behind HTTPS (check X-Forwarded-Proto or scheme)
+        if app.config.get('PREFERRED_URL_SCHEME') == 'https':
+            h.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+
+        return response
 
 
 def _add_frontend_routes(app: Flask) -> None:

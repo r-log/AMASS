@@ -75,13 +75,26 @@ class Config:
         'notifications':        '60/60',
     }
 
+    # Logging
+    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')
+    LOG_FORMAT = os.environ.get(
+        'LOG_FORMAT',
+        '%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+    )
+
+    # Security headers (applied via after_request)
+    SECURITY_HEADERS = True
+
 
 class DevelopmentConfig(Config):
     """Development environment configuration."""
 
     DEBUG = True
+    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'DEBUG')
     DATABASE_PATH = os.environ.get('DEV_DATABASE_PATH') or str(
         Config.BASE_DIR / 'database.db')
+    # Relaxed in dev — no HSTS, no forced HTTPS
+    SECURITY_HEADERS = False
 
 
 class ProductionConfig(Config):
@@ -100,6 +113,17 @@ class ProductionConfig(Config):
 
     # Enforce request size limit
     MAX_CONTENT_LENGTH = int(os.environ.get('MAX_CONTENT_LENGTH', str(16 * 1024 * 1024)))
+
+    # Production logging — structured JSON for log aggregation
+    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'WARNING')
+    LOG_FORMAT = os.environ.get(
+        'LOG_FORMAT',
+        '%(asctime)s [%(levelname)s] %(name)s %(funcName)s:%(lineno)d — %(message)s'
+    )
+
+    # Security
+    SECURITY_HEADERS = True
+    PREFERRED_URL_SCHEME = 'https'
 
 
 class TestingConfig(Config):

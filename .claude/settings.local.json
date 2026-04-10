@@ -12,7 +12,9 @@
       "Bash(ls -la /c/Users/Roko/Documents/PYTHON/AMAS/electrician-log-mvp/backend/*.py)",
       "Bash(grep -n \"window\\\\\\\\.offlineQueue\\\\|window\\\\\\\\.apiClient\\\\|window\\\\\\\\.authManager\\\\|window\\\\\\\\..*Service\" /c/Users/Roko/Documents/PYTHON/AMAS/electrician-log-mvp/frontend/app-openseadragon.js)",
       "Bash(grep -E \"^\\\\s*$\")",
-      "Bash(grep -rn \"def.*->\\\\|def.*:$\" /c/Users/Roko/Documents/PYTHON/AMAS/electrician-log-mvp/backend/app/models/*.py)"
+      "Bash(grep -rn \"def.*->\\\\|def.*:$\" /c/Users/Roko/Documents/PYTHON/AMAS/electrician-log-mvp/backend/app/models/*.py)",
+      "Bash(pip show:*)",
+      "Bash(pip list:*)"
     ]
   }
 }
