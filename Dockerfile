@@ -1,39 +1,50 @@
 # --------------------------------------------------------------------------
 # Electrician Log MVP — single-container image
 # Flask serves the API + frontend static files on port 5000.
+#
+# Multi-stage build:
+#   1. builder  — installs gcc + dev headers, compiles pyvips CFFI extension
+#   2. runtime  — slim image with only shared libs and pre-built wheels
 # --------------------------------------------------------------------------
 
-FROM python:3.10-slim AS base
+# ========================  STAGE 1: builder  ========================
+FROM python:3.10-slim AS builder
 
-# System deps for pyvips (image tiling) and pdf2image (poppler)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+        gcc \
         libvips-dev \
         poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
+COPY backend/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir --prefix=/install \
+    -r /tmp/requirements.txt gunicorn
+
+# ========================  STAGE 2: runtime  ========================
+FROM python:3.10-slim AS runtime
+
+# Runtime-only libs (no gcc, no -dev headers)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libvips42 \
+        poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy pre-built Python packages from builder
+COPY --from=builder /install /usr/local
+
 WORKDIR /app
 
-# --------------------------------------------------------------------------
-# Python dependencies (cached layer — only re-runs when requirements change)
-# --------------------------------------------------------------------------
-COPY backend/requirements.txt /app/backend/requirements.txt
-RUN pip install --no-cache-dir -r /app/backend/requirements.txt gunicorn
-
-# --------------------------------------------------------------------------
 # Application code
-# --------------------------------------------------------------------------
 COPY backend/ /app/backend/
 COPY frontend/ /app/frontend/
 
 # Persistent data directories — mount volumes here in production
 RUN mkdir -p /app/data /app/floor-plans /app/project-backups /app/backend/tiles
 
-# --------------------------------------------------------------------------
-# Runtime config
-# --------------------------------------------------------------------------
+# Runtime config — SECRET_KEY intentionally omitted (must be set at runtime)
 ENV FLASK_ENV=production \
-    SECRET_KEY="" \
     DATABASE_PATH=/app/data/database.db \
     FLOOR_PLANS_DIR=/app/floor-plans \
     PROJECT_BACKUPS_DIR=/app/project-backups \
