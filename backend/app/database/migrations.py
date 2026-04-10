@@ -104,10 +104,9 @@ def initialize_database() -> None:
     # Seed default data
     seed_default_data()
 
-    # Record initialization as migration version 1
-    current_version = get_migration_version()
-    if current_version == 0:
-        record_migration(1, "Initial database setup")
+    # Note: migration version is recorded by run_migrations(), not here.
+    # This function can also be called from reset_database() where the
+    # caller handles versioning separately.
 
     print("Database initialization completed!")
 
