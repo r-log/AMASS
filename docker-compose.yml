@@ -1,0 +1,27 @@
+services:
+  app:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in .env or shell}
+      - DATABASE_PATH=/app/data/database.db
+      - FLOOR_PLANS_DIR=/app/floor-plans
+      - PROJECT_BACKUPS_DIR=/app/project-backups
+      - TILES_DIRECTORY=/app/backend/tiles
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5000}
+      - JWT_EXPIRATION_HOURS=${JWT_EXPIRATION_HOURS:-8}
+      - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-true}
+    volumes:
+      - db-data:/app/data
+      - floor-plans:/app/floor-plans
+      - project-backups:/app/project-backups
+      - tiles:/app/backend/tiles
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  floor-plans:
+  project-backups:
+  tiles:

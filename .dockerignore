@@ -1,0 +1,60 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*.so
+.Python
+backend/venv
+backend/.venv
+venv
+.venv
+*.egg-info
+.eggs
+.pytest_cache
+backend/.pytest_cache
+
+# IDE / OS
+.idea
+.vscode
+.cursor
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Dev / session files
+SESSION_CONTEXT*
+FEATURES.md
+CLAUDE.md
+PLAN.md
+PROBLEMOVI.md
+README.md
+
+# Test fixtures
+backend/tests
+
+# Database files (will be created at runtime)
+backend/*.db
+backend/*.db-journal
+backend/*.backup_*
+
+# Existing data directories (mounted as volumes at runtime)
+floor-plans
+project-backups
+backend/tiles
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Misc
+*.log
+*.tmp
+.cache
+.env
+.env.*
