@@ -5,7 +5,14 @@
       "Bash(find:*)",
       "Bash(xargs basename:*)",
       "Bash(grep -rn \"src=\\\\|href=\" /c/Users/Roko/Documents/PYTHON/AMAS/electrician-log-mvp/frontend/*.html)",
-      "Bash(grep -h \"src=\" /c/Users/Roko/Documents/PYTHON/AMAS/electrician-log-mvp/frontend/*.html)"
+      "Bash(grep -h \"src=\" /c/Users/Roko/Documents/PYTHON/AMAS/electrician-log-mvp/frontend/*.html)",
+      "Bash(python3 -c \"import sys; print\\(f'Python version: {sys.version}'\\)\")",
+      "Bash(git check-ignore:*)",
+      "Bash(xargs wc:*)",
+      "Bash(ls -la /c/Users/Roko/Documents/PYTHON/AMAS/electrician-log-mvp/backend/*.py)",
+      "Bash(grep -n \"window\\\\\\\\.offlineQueue\\\\|window\\\\\\\\.apiClient\\\\|window\\\\\\\\.authManager\\\\|window\\\\\\\\..*Service\" /c/Users/Roko/Documents/PYTHON/AMAS/electrician-log-mvp/frontend/app-openseadragon.js)",
+      "Bash(grep -E \"^\\\\s*$\")",
+      "Bash(grep -rn \"def.*->\\\\|def.*:$\" /c/Users/Roko/Documents/PYTHON/AMAS/electrician-log-mvp/backend/app/models/*.py)"
     ]
   }
 }

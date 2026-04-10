@@ -4,13 +4,12 @@ Authentication API routes.
 
 from flask import Blueprint, request, jsonify, current_app
 from app.services.auth_service import AuthService
-from app.utils.decorators import token_required, admin_required, validate_json_request, rate_limit
+from app.utils.decorators import token_required, admin_required, validate_json_request
 
 auth_bp = Blueprint('auth', __name__)
 
 
 @auth_bp.route('/login', methods=['POST'])
-@rate_limit(max_requests=10, window_minutes=5)
 @validate_json_request
 def login():
     """User login endpoint."""

@@ -2,16 +2,12 @@
 Decorators for authentication and authorization.
 """
 
-import threading
-import time
-from collections import defaultdict
 from functools import wraps
 from typing import Optional, Tuple, Any
 
 from flask import request, jsonify, current_app
 
 from app.services.auth_service import AuthService
-from app.models.user import User
 
 
 def _extract_and_validate_token() -> Tuple[Optional[Any], Optional[Any]]:
@@ -164,56 +160,6 @@ def validate_json_request(f):
         return f(*args, **kwargs)
 
     return decorated
-
-
-class _RateLimitStore:
-    """Thread-safe in-memory sliding-window rate limiter."""
-
-    def __init__(self):
-        self._requests: dict[str, list[float]] = defaultdict(list)
-        self._lock = threading.Lock()
-
-    def is_limited(self, key: str, max_requests: int, window_seconds: int) -> bool:
-        now = time.time()
-        cutoff = now - window_seconds
-        with self._lock:
-            # Prune old entries
-            timestamps = self._requests[key]
-            self._requests[key] = [t for t in timestamps if t > cutoff]
-            if len(self._requests[key]) >= max_requests:
-                return True
-            self._requests[key].append(now)
-            return False
-
-
-_rate_limit_store = _RateLimitStore()
-
-
-def rate_limit(max_requests=100, window_minutes=60):
-    """
-    In-memory sliding-window rate limiter keyed by client IP.
-
-    For multi-process / distributed deployments, replace the store
-    with Redis or similar.
-
-    Args:
-        max_requests: Maximum number of requests allowed in the window
-        window_minutes: Time window in minutes
-    """
-    def decorator(f):
-        @wraps(f)
-        def decorated(*args, **kwargs):
-            client_ip = request.remote_addr or 'unknown'
-            key = f"{f.__name__}:{client_ip}"
-            if _rate_limit_store.is_limited(key, max_requests, window_minutes * 60):
-                return jsonify({
-                    'error': 'Too many requests',
-                    'message': f'Rate limit exceeded. Try again later.'
-                }), 429
-            return f(*args, **kwargs)
-
-        return decorated
-    return decorator
 
 
 def log_endpoint_access(f):

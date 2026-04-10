@@ -52,6 +52,29 @@ class Config:
     DEFAULT_PAGE_SIZE = int(os.environ.get('DEFAULT_PAGE_SIZE', '50'))
     MAX_PAGE_SIZE = int(os.environ.get('MAX_PAGE_SIZE', '200'))
 
+    # Rate limiting
+    RATE_LIMIT_ENABLED = os.environ.get('RATE_LIMIT_ENABLED', 'true').lower() == 'true'
+    RATE_LIMIT_BACKEND = os.environ.get('RATE_LIMIT_BACKEND', 'memory')  # "memory" or "redis"
+    RATE_LIMIT_REDIS_URL = os.environ.get('RATE_LIMIT_REDIS_URL', '')
+    RATE_LIMIT_DEFAULT = os.environ.get('RATE_LIMIT_DEFAULT', '100/60')  # 100 req / 60 s
+    RATE_LIMIT_RULES = {
+        # Auth — tighter limits on sensitive endpoints
+        'auth.login':           '10/300',     # 10 req / 5 min
+        'auth.register':        '5/300',      # 5  req / 5 min
+        'auth.change_password': '5/300',
+        'auth.reset_password':  '5/300',
+        'auth.refresh_token':   '20/60',
+        # Write-heavy blueprints
+        'assignments':          '30/60',
+        'work_logs':            '60/60',
+        'critical_sectors':     '30/60',
+        'projects':             '30/60',
+        # Read-heavy / dashboard
+        'dashboard':            '60/60',
+        'tiles':                '200/60',     # tile requests are frequent
+        'notifications':        '60/60',
+    }
+
 
 class DevelopmentConfig(Config):
     """Development environment configuration."""
@@ -88,6 +111,9 @@ class TestingConfig(Config):
     # Faster settings for tests
     TILE_SIZE = 256
     TILE_DPI = 150
+
+    # Disable rate limiting in tests by default (individual tests opt in)
+    RATE_LIMIT_ENABLED = False
 
 
 # Configuration mapping

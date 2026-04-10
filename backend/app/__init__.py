@@ -53,6 +53,10 @@ def create_app(config_name: str = None) -> Flask:
     # Register error handlers
     register_error_handlers(app)
 
+    # Rate limiting middleware (before routes so limits apply to all blueprints)
+    from app.middleware.rate_limiting import init_rate_limiting
+    init_rate_limiting(app)
+
     # Serve frontend (HTML, JS, CSS, assets) so everything works on port 5000
     _add_frontend_routes(app)
 

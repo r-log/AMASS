@@ -232,9 +232,19 @@ def sample_pdf():
 
 
 @pytest.fixture
-def reset_rate_limiter():
-    """Reset the global rate limiter between tests."""
-    from app.utils.decorators import _rate_limit_store
-    _rate_limit_store._requests.clear()
+def reset_rate_limiter(app):
+    """Enable rate limiting and reset the middleware backend for a single test."""
+    from app.middleware.rate_limiting import init_rate_limiting, get_backend
+    # Enable rate limiting for this test if it was disabled
+    app.config['RATE_LIMIT_ENABLED'] = True
+    with app.app_context():
+        # Re-initialise so the before/after hooks are registered
+        if get_backend() is None:
+            init_rate_limiting(app)
+        backend = get_backend()
+        if backend:
+            backend.clear_all()
     yield
-    _rate_limit_store._requests.clear()
+    if get_backend():
+        get_backend().clear_all()
+    app.config['RATE_LIMIT_ENABLED'] = False
