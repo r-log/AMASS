@@ -4,7 +4,12 @@ Authentication API routes.
 
 from flask import Blueprint, request, jsonify, current_app
 from app.services.auth_service import AuthService
-from app.utils.decorators import token_required, admin_required, validate_json_request
+from app.utils.decorators import (
+    extract_bearer_token,
+    token_required,
+    admin_required,
+    validate_json_request,
+)
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -47,9 +52,9 @@ def login():
 def logout():
     """User logout endpoint."""
     try:
-        auth_header = request.headers.get('Authorization', '')
-        token = auth_header.replace(
-            'Bearer ', '') if auth_header.startswith('Bearer ') else ''
+        token = extract_bearer_token(
+            request.headers.get('Authorization', '')
+        ) or ''
 
         success, message = AuthService.logout_user(token)
 
@@ -82,9 +87,9 @@ def verify_token():
 def refresh_token():
     """Refresh authentication token."""
     try:
-        auth_header = request.headers.get('Authorization', '')
-        token = auth_header.replace(
-            'Bearer ', '') if auth_header.startswith('Bearer ') else ''
+        token = extract_bearer_token(
+            request.headers.get('Authorization', '')
+        ) or ''
 
         success, new_token, message = AuthService.refresh_token(token)
 
