@@ -692,19 +692,19 @@ graph TB
 
 ## 12. Cross-Cutting Concerns Summary
 
-| Concern | Mechanism | Location |
-|---|---|---|
-| **AuthN** | JWT (HS256), `Authorization: Bearer` | `app/services/auth_service.py`, `app/utils/decorators.py` |
-| **AuthZ** | Role decorators + resource-owner check | `@token_required`, `@role_required`, `@resource_owner_or_admin` |
-| **Token revocation** | In-memory `_TokenBlacklist` until `exp` | `auth_service` |
-| **Rate limiting** | Per-endpoint counters (memory or Redis) | `app/middleware/rate_limiting.py` |
-| **Realtime** | Flask-Sock `/ws` + room registry | `app/realtime/__init__.py` |
-| **Offline mutations** | IndexedDB queue + replay | `frontend/core/offline/offline-queue.js`, `sw-offline-sync.js` |
-| **Spatial data** | Normalized (0..1) `x/y` coords on floors | `WorkLog`, `CriticalSector`, `CableRoute` |
-| **Image pipeline** | PDF → PIL → DZI tiles (WebP) | `backend/utils/tile_generator_safe.py` |
-| **Data safety** | ZIP backup before project delete | `project_backup_service.py` |
-| **Migrations** | Idempotent schema creation on startup | `app/database/migrations.py` |
-| **Service result** | `ServiceResult` dataclass for uniform API responses | `app/utils/result.py` |
+| Concern               | Mechanism                                           | Location                                                        |
+| --------------------- | --------------------------------------------------- | --------------------------------------------------------------- |
+| **AuthN**             | JWT (HS256), `Authorization: Bearer`                | `app/services/auth_service.py`, `app/utils/decorators.py`       |
+| **AuthZ**             | Role decorators + resource-owner check              | `@token_required`, `@role_required`, `@resource_owner_or_admin` |
+| **Token revocation**  | In-memory `_TokenBlacklist` until `exp`             | `auth_service`                                                  |
+| **Rate limiting**     | Per-endpoint counters (memory or Redis)             | `app/middleware/rate_limiting.py`                               |
+| **Realtime**          | Flask-Sock `/ws` + room registry                    | `app/realtime/__init__.py`                                      |
+| **Offline mutations** | IndexedDB queue + replay                            | `frontend/core/offline/offline-queue.js`, `sw-offline-sync.js`  |
+| **Spatial data**      | Normalized (0..1) `x/y` coords on floors            | `WorkLog`, `CriticalSector`, `CableRoute`                       |
+| **Image pipeline**    | PDF → PIL → DZI tiles (WebP)                        | `backend/utils/tile_generator_safe.py`                          |
+| **Data safety**       | ZIP backup before project delete                    | `project_backup_service.py`                                     |
+| **Migrations**        | Idempotent schema creation on startup               | `app/database/migrations.py`                                    |
+| **Service result**    | `ServiceResult` dataclass for uniform API responses | `app/utils/result.py`                                           |
 
 ---
 
