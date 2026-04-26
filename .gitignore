@@ -50,6 +50,8 @@ project-backups/
 
 # Logo and assets - may contain proprietary branding
 assets/
+.claude/
+docs/
 frontend/assets/
 
 # Session/context files - AI or IDE session state

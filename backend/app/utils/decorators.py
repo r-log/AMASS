@@ -10,6 +10,23 @@ from flask import request, jsonify, current_app
 from app.services.auth_service import AuthService
 
 
+def extract_bearer_token(auth_header: str) -> Optional[str]:
+    """Extract the token from a ``Bearer <token>`` Authorization header.
+
+    Returns the token string, or ``None`` if the header is missing,
+    empty, or doesn't start with "Bearer ".  Centralizes the parsing
+    that was previously duplicated across decorators and route handlers
+    with inconsistent approaches (split vs replace).
+    """
+    if not auth_header:
+        return None
+    parts = auth_header.split(' ', 1)
+    if len(parts) != 2 or parts[0] != 'Bearer':
+        return None
+    token = parts[1].strip()
+    return token if token else None
+
+
 def _extract_and_validate_token() -> Tuple[Optional[Any], Optional[Any]]:
     """
     Extract JWT from Authorization header and validate.
@@ -17,10 +34,8 @@ def _extract_and_validate_token() -> Tuple[Optional[Any], Optional[Any]]:
     """
     token = None
     if 'Authorization' in request.headers:
-        auth_header = request.headers['Authorization']
-        try:
-            token = auth_header.split(' ')[1]
-        except IndexError:
+        token = extract_bearer_token(request.headers['Authorization'])
+        if token is None and request.headers['Authorization']:
             return None, (jsonify({'error': 'Invalid token format'}), 401)
 
     if not token:
