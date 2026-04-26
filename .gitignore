@@ -31,6 +31,8 @@ venv/
 .venv/
 *.egg-info/
 .eggs/
+docs/
+.claude/
 
 # IDE and OS
 .idea/
